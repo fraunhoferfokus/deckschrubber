@@ -25,6 +25,8 @@ var (
 	day, month, year *int
 	// Max number of repositories to be fetched from registry
 	repoCount *int
+	// If true, no actual deletion is done
+	dry *bool
 )
 
 func init() {
@@ -39,6 +41,8 @@ func init() {
 	month = flag.Int("month", 0, "max age in months")
 	// Maximum age of iamges to consider for deletion in years (default = 0)
 	year = flag.Int("year", 0, "max age in days")
+	// Dry run option (doesn't actually delete)
+	dry = flag.Bool("dry", false, "does not actually deletes")
 }
 
 func main() {
@@ -158,9 +162,11 @@ func main() {
 			if tag.Time.Before(deadline) {
 				logger.WithField("tag", tag.Tag).Info("Trying to delete outdated image found...")
 
-				err := tag.Delete()
-				if err != nil {
-					logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+				if !*dry {
+					err := tag.Delete()
+					if err != nil {
+						logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+					}
 				}
 			}
 		}
