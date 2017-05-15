@@ -10,6 +10,9 @@ import (
 
 	"io"
 
+	"fmt"
+	"os"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
@@ -27,6 +30,12 @@ var (
 	repoCount *int
 	// If true, no actual deletion is done
 	dry *bool
+	// If true, version is shown and program quits
+	ver *bool
+)
+
+const (
+	version string = "0.1.0"
 )
 
 func init() {
@@ -43,10 +52,17 @@ func init() {
 	year = flag.Int("year", 0, "max age in days")
 	// Dry run option (doesn't actually delete)
 	dry = flag.Bool("dry", false, "does not actually deletes")
+	// Shows version
+	ver = flag.Bool("v", false, "shows version and quits")
 }
 
 func main() {
 	flag.Parse()
+
+	if *ver {
+		fmt.Printf("Version: %s\n", version)
+		os.Exit(0)
+	}
 
 	// Create registry object
 	r, err := client.NewRegistry(context.Background(), *registryURL, nil)
