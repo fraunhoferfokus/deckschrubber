@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"os"
 
+	"regexp"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
@@ -24,10 +26,16 @@ var (
 	/** CLI flags */
 	// Base URL of registry
 	registryURL *string
+	// Regexps for filtering repositories and tags
+	repoRegexp, tagRegexp *string
 	// Maximum age of image to consider for deletion
 	day, month, year *int
 	// Max number of repositories to be fetched from registry
 	repoCount *int
+	// Number of the latest n matching images of an repository that will be ignored
+	latest *int
+	// If true, application runs in debug mode
+	debug *bool
 	// If true, no actual deletion is done
 	dry *bool
 	// If true, version is shown and program quits
@@ -50,6 +58,14 @@ func init() {
 	month = flag.Int("month", 0, "max age in months")
 	// Maximum age of iamges to consider for deletion in years (default = 0)
 	year = flag.Int("year", 0, "max age in days")
+	// Regexp for images (default = .*)
+	repoRegexp = flag.String("repo", ".*", "matching repositories (allows regexp)")
+	// Regexp for tags (default = .*)
+	tagRegexp = flag.String("tag", ".*", "matching tags (allows regexp)")
+	// The number of the latest matching images of an repository that won't be deleted
+	latest = flag.Int("latest", 1, "number of the latest matching images of an repository that won't be deleted")
+	// Dry run option (doesn't actually delete)
+	debug = flag.Bool("debug", false, "run in debug mode")
 	// Dry run option (doesn't actually delete)
 	dry = flag.Bool("dry", false, "does not actually deletes")
 	// Shows version
@@ -62,6 +78,10 @@ func main() {
 	if *ver {
 		fmt.Printf("Version: %s\n", version)
 		os.Exit(0)
+	}
+
+	if *debug {
+		log.SetLevel(log.DebugLevel)
 	}
 
 	// Create registry object
@@ -91,8 +111,20 @@ func main() {
 	for _, entry := range entries[:numFilled] {
 		logger := log.WithField("repo", entry)
 
+		matched, err := regexp.MatchString(*repoRegexp, entry)
+
+		if matched == false {
+			logger.WithFields(log.Fields{"entry": entry}).Debug("Ignore non matching repository (-repo=", *repoRegexp, ")")
+			continue
+		}
+
 		// Establish repository object in registry
-		repoName, _ := reference.ParseNamed(entry)
+		repoName, err := reference.WithName(entry)
+
+		if err != nil {
+			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
+		}
+
 		repo, err := client.NewRepository(context.Background(), repoName, *registryURL, nil)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
@@ -118,6 +150,13 @@ func main() {
 		// and the corresponding blob information
 		for _, tag := range tags {
 			tagLogger := logger.WithField("tag", tag)
+
+			matched, _ := regexp.MatchString(*tagRegexp, tag)
+
+			if !matched {
+				tagLogger.Debug("Ignore non matching tag (-tag=", *tagRegexp, ")")
+				continue
+			}
 
 			tagLogger.Debug("Fetching tag...")
 			desc, err := tagsService.Get(ctx, tag)
@@ -167,16 +206,24 @@ func main() {
 	for name, tags := range repoImages {
 		logger := log.WithField("repo", name)
 
-		logger.Infof("Analyzing tags...")
+		logger.Debug("Analyzing tags...")
 
 		tagCount := len(tags)
-		if tagCount <= 1 {
+
+		if tagCount == 0 {
+			logger.Debug("Ignore repository with no matching tags")
 			continue
 		}
 
-		for _, tag := range tags[:tagCount-1] {
+		for tagIndex, tag := range tags[:tagCount] {
+
+			if tagIndex > tagCount-1-*latest {
+				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", *latest, *latest)
+				continue
+			}
+
 			if tag.Time.Before(deadline) {
-				logger.WithField("tag", tag.Tag).Info("Trying to delete outdated image found...")
+				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Delete outdated image (-dry=%v)", *dry)
 
 				if !*dry {
 					err := tag.Delete()
@@ -184,6 +231,8 @@ func main() {
 						logger.WithField("tag", tag.Tag).Error("Could not delete image!")
 					}
 				}
+			} else {
+				logger.WithField("tag", tag.Tag).Debug("Image not outdated")
 			}
 		}
 	}
