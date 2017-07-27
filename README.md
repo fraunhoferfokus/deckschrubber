@@ -27,6 +27,8 @@ We run our own private registry on a server with limited storage and it was only
       run in debug mode      
 -dry
       does not actually deletes
+-keeplist string
+      yaml file with a list of images that won't be deleted
 -latest int
       number of the latest matching images of an repository that won't be deleted (default 1)      
 -month int

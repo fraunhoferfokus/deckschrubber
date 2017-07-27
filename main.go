@@ -1,8 +1,11 @@
 package main
 
 import (
+	"io/ioutil"
 	"sort"
 	"time"
+
+	yaml "gopkg.in/yaml.v2"
 
 	"encoding/json"
 
@@ -32,6 +35,8 @@ var (
 	day, month, year *int
 	// Max number of repositories to be fetched from registry
 	repoCount *int
+	// File that holds a list of images to keep in every case
+	keepListFile *string
 	// Number of the latest n matching images of an repository that will be ignored
 	latest *int
 	// If true, application runs in debug mode
@@ -62,6 +67,8 @@ func init() {
 	repoRegexp = flag.String("repo", ".*", "matching repositories (allows regexp)")
 	// Regexp for tags (default = .*)
 	tagRegexp = flag.String("tag", ".*", "matching tags (allows regexp)")
+	// File that holds a list of images to keep in every case
+	keepListFile = flag.String("keeplist", "", "keep all images listed in the given yaml file")
 	// The number of the latest matching images of an repository that won't be deleted
 	latest = flag.Int("latest", 1, "number of the latest matching images of an repository that won't be deleted")
 	// Dry run option (doesn't actually delete)
@@ -82,6 +89,23 @@ func main() {
 
 	if *debug {
 		log.SetLevel(log.DebugLevel)
+	}
+
+	keepMap := make(map[string]int)
+	if *keepListFile != "" {
+		keepYaml, err := ioutil.ReadFile(*keepListFile)
+		if err != nil {
+			log.Fatalf("Could not read the keeplist! (err: %s", err)
+		}
+
+		var keepList []string
+		if yaml.Unmarshal(keepYaml, &keepList) != nil {
+			log.Fatalf("Could not unmarshal keeplist! (err: %s", err)
+		}
+
+		for _, entry := range keepList {
+			keepMap[entry] = 1
+		}
 	}
 
 	// Create registry object
@@ -192,7 +216,7 @@ func main() {
 			var blobInfo BlobInfo
 			json.Unmarshal(b, &blobInfo)
 
-			images = append(images, Image{entry, tag, blobInfo.Created, func() error { return manifestService.Delete(context.Background(), desc.Digest) }})
+			images = append(images, Image{entry, tag, string(desc.Digest), blobInfo.Created, func() error { return manifestService.Delete(context.Background(), desc.Digest) }})
 		}
 
 		sort.Sort(ImageByDate(images))
@@ -223,16 +247,22 @@ func main() {
 			}
 
 			if tag.Time.Before(deadline) {
-				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Delete outdated image (-dry=%v)", *dry)
+				imageWithDigest := fmt.Sprintf("%s:%s", name, string(tag.Digest))
 
-				if !*dry {
-					err := tag.Delete()
-					if err != nil {
-						logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+				if _, keep := keepMap[imageWithDigest]; keep {
+					logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Digest).Infof("Won't delete image because of keeplist")
+				} else {
+					logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Digest).Infof("Delete outdated image (-dry=%v)", *dry)
+
+					if !*dry {
+						err := tag.Delete()
+						if err != nil {
+							logger.WithField("tag", tag.Tag).WithField("digest", tag.Digest).Error("Could not delete image!")
+						}
 					}
 				}
 			} else {
-				logger.WithField("tag", tag.Tag).Debug("Image not outdated")
+				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Digest).Debug("Image not outdated")
 			}
 		}
 	}
