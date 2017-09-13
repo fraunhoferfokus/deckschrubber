@@ -1,5 +1,5 @@
 # CHANGELOG
-
+* `0.3.0`: Adapt to new Docker Distribution API
 * `0.2.0`:
   * Null pointer bug fix
   * Additional features (match by tag/repo, custom latest ignore, debug mode)
