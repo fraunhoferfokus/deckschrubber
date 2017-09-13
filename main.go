@@ -85,7 +85,7 @@ func main() {
 	}
 
 	// Create registry object
-	r, err := client.NewRegistry(context.Background(), *registryURL, nil)
+	r, err := client.NewRegistry(*registryURL, nil)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
@@ -125,7 +125,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(context.Background(), repoName, *registryURL, nil)
+		repo, err := client.NewRepository(repoName, *registryURL, nil)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
