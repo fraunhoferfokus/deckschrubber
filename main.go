@@ -35,8 +35,6 @@ var (
 	repoRegexp, tagRegexp *string
 	// Maximum age of image to consider for deletion
 	day, month, year *int
-	// Max number of repositories to be fetched from registry
-	repoCount *int
 	// Number of the latest n matching images of an repository that will be ignored
 	latest *int
 	// If true, application runs in debug mode
@@ -55,8 +53,6 @@ const (
 
 func init() {
 	/** CLI flags */
-	// Max number of repositories to fetch from registry (default = 5)
-	repoCount = flag.Int("count", 5, "number of repositories to garbage collect")
 	// Base URL of registry (default = http://localhost:5000)
 	registryURL = flag.String("registry", "http://localhost:5000", "URL of registry")
 	// registry username (default = "")
@@ -117,10 +113,8 @@ func main() {
 
 	fetchAll := strings.Compare(*repoRegexp, ".*") == 0
 
-	// List of all repositories fetched from the registry. The number
-	// of fetched repositories depends on the number provided by the
-	// user ('-count' flag)
-	entries := make([]string, *repoCount)
+	// List of all repositories fetched from the registry.
+	var entries []string
 	numFilled := 0
 	if fetchAll {
 		// Fetch all repositories from the registry
@@ -139,13 +133,6 @@ func main() {
 	// Fetch information about images belonging to each repository
 	for _, entry := range entries[:numFilled] {
 		logger := log.WithField("repo", entry)
-
-		matched, err := regexp.MatchString(*repoRegexp, entry)
-
-		if matched == false {
-			logger.WithFields(log.Fields{"entry": entry}).Debug("Ignore non matching repository (-repo=", *repoRegexp, ")")
-			continue
-		}
 
 		// Establish repository object in registry
 		repoName, err := reference.WithName(entry)
@@ -221,7 +208,9 @@ func main() {
 			var blobInfo BlobInfo
 			json.Unmarshal(b, &blobInfo)
 
-			images = append(images, Image{entry, tag, blobInfo.Created, func() error { return manifestService.Delete(context.Background(), desc.Digest) }})
+			images = append(images,
+				Image{entry, tag, desc.Digest.String(), blobInfo.Created,
+					func() error { return manifestService.Delete(ctx, desc.Digest) }})
 		}
 
 		sort.Sort(ImageByDate(images))
@@ -243,25 +232,34 @@ func main() {
 			logger.Debug("Ignore repository with no matching tags")
 			continue
 		}
+		latestDigests := make(map[string]bool)
+		for _, tag := range tags[len(tags)-*latest:] {
+			latestDigests[tag.Digest] = true
+		}
 
 		for tagIndex, tag := range tags[:tagCount] {
-
+			tagLogger := logger.WithField("tag", tag)
 			if tagIndex > tagCount-1-*latest {
-				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", *latest, *latest)
+				tagLogger.WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", *latest, *latest)
 				continue
 			}
 
 			if tag.Time.Before(deadline) {
-				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Delete outdated image (-dry=%v)", *dry)
+				tagLogger.WithField("time", tag.Time).Infof("Delete outdated image (-dry=%v)", *dry)
 
 				if !*dry {
-					err := tag.Delete()
-					if err != nil {
-						logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+					if latestDigests[tag.Digest] {
+						tagLogger.WithField("digest", tag.Digest).Info("Duplicate with lastest matching images, cannot delete image skip.")
+					} else {
+						err := tag.Delete()
+						if err != nil {
+							tagLogger.Error("Could not delete image!")
+						}
 					}
+
 				}
 			} else {
-				logger.WithField("tag", tag.Tag).Debug("Image not outdated")
+				tagLogger.Debug("Image not outdated")
 			}
 		}
 	}

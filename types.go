@@ -1,6 +1,8 @@
 package main
 
-import "time"
+import (
+	"time"
+)
 
 // BlobInfo represents information about a specific Blob
 type BlobInfo struct {
@@ -11,6 +13,7 @@ type BlobInfo struct {
 type Image struct {
 	Repository string       // Name of repository to which image belongs
 	Tag        string       // Image's tag
+	Digest     string       // Image's digest
 	Time       time.Time    // Creation time of the image
 	Delete     func() error // Function to delete image from registry
 }
