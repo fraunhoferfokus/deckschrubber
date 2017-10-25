@@ -91,7 +91,7 @@ ADD main /
 ENTRYPOINT ["/main"]
 ```
 
-* **Compile golang app with the following command and move the previous folder**
+* **Compile golang app with the following command and move to previous folder**
 
 ```
 CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
@@ -106,7 +106,7 @@ docker build -t your.registry.com:5000/someproject/deckschrubber:20171025-3-SNAP
 docker push your.registry.com:5000/someproject/deckschrubber:20171025-3-SNAPSHOT 
 ```
 
-* **Run dechschrubber as image**
+* **Run deckschrubber as image**
 
 ```
 docker run --rm --name registry-retention-runner deckschrubber -registry http://your.registry.com:5000 -repo developer/myapp,developer/deckschrubber -username someone -password urpwd -insecure
