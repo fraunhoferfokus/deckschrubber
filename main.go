@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"encoding/json"
@@ -15,17 +16,21 @@ import (
 
 	"regexp"
 
+	"crypto/tls"
+	"net/http"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
+	"github.com/heroku/docker-registry-client/registry"
 )
 
 var (
 	/** CLI flags */
 	// Base URL of registry
-	registryURL *string
+	registryURL, username, password *string
 	// Regexps for filtering repositories and tags
 	repoRegexp, tagRegexp *string
 	// Maximum age of image to consider for deletion
@@ -40,6 +45,8 @@ var (
 	dry *bool
 	// If true, version is shown and program quits
 	ver *bool
+	// If true, https connection will ignore verification error
+	insecure *bool
 )
 
 const (
@@ -49,9 +56,13 @@ const (
 func init() {
 	/** CLI flags */
 	// Max number of repositories to fetch from registry (default = 5)
-	repoCount = flag.Int("repos", 5, "number of repositories to garbage collect")
+	repoCount = flag.Int("count", 5, "number of repositories to garbage collect")
 	// Base URL of registry (default = http://localhost:5000)
 	registryURL = flag.String("registry", "http://localhost:5000", "URL of registry")
+	// registry username (default = "")
+	username = flag.String("username", "", "registry username to login")
+	// registry password (default = "")
+	password = flag.String("password", "", "registry password to login")
 	// Maximum age of iamges to consider for deletion in days (default = 0)
 	day = flag.Int("day", 0, "max age in days")
 	// Maximum age of months to consider for deletion in days (default = 0)
@@ -59,7 +70,7 @@ func init() {
 	// Maximum age of iamges to consider for deletion in years (default = 0)
 	year = flag.Int("year", 0, "max age in days")
 	// Regexp for images (default = .*)
-	repoRegexp = flag.String("repo", ".*", "matching repositories (allows regexp)")
+	repoRegexp = flag.String("repo", ".*", "matching repositories (allows mulitple value seperates by ,)")
 	// Regexp for tags (default = .*)
 	tagRegexp = flag.String("tag", ".*", "matching tags (allows regexp)")
 	// The number of the latest matching images of an repository that won't be deleted
@@ -68,6 +79,8 @@ func init() {
 	debug = flag.Bool("debug", false, "run in debug mode")
 	// Dry run option (doesn't actually delete)
 	dry = flag.Bool("dry", false, "does not actually deletes")
+	// https insecure flag
+	insecure = flag.Bool("insecure", false, "ignore https verification error")
 	// Shows version
 	ver = flag.Bool("v", false, "shows version and quits")
 }
@@ -83,27 +96,43 @@ func main() {
 	if *debug {
 		log.SetLevel(log.DebugLevel)
 	}
+	// Empty context for all requests in sequel
+	ctx := context.Background()
+	transport := http.DefaultTransport
+	if *insecure {
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+	}
 
+	wrapTransport := registry.WrapTransport(transport, *registryURL,
+		*username, *password)
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, nil)
+	r, err := client.NewRegistry(ctx, *registryURL, wrapTransport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
 
+	fetchAll := strings.Compare(*repoRegexp, ".*") == 0
+
 	// List of all repositories fetched from the registry. The number
 	// of fetched repositories depends on the number provided by the
-	// user ('-repos' flag)
+	// user ('-count' flag)
 	entries := make([]string, *repoCount)
-
-	// Empty context for all requests in sequel
-	ctx := context.Background()
-
-	// Fetch all repositories from the registry
-	numFilled, err := r.Repositories(ctx, entries, "")
-	if err != nil && err != io.EOF {
-		log.Fatalf("Error while fetching repositories! (err: %v)", err)
+	numFilled := 0
+	if fetchAll {
+		// Fetch all repositories from the registry
+		numFilled, err := r.Repositories(ctx, entries, "")
+		if err != nil && err != io.EOF {
+			log.Fatalf("Error while fetching repositories! (err: %v)", err)
+		}
+		log.WithFields(log.Fields{"count": numFilled, "entries": entries}).Info("Successfully fetched repositories.")
+	} else {
+		entries = strings.Split(*repoRegexp, ",")
+		numFilled = len(entries)
 	}
-	log.WithFields(log.Fields{"count": numFilled, "entries": entries}).Info("Successfully fetched repositories.")
 
 	repoImages := make(map[string][]Image)
 
@@ -125,7 +154,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, nil)
+		repo, err := client.NewRepository(ctx, repoName, *registryURL, wrapTransport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
