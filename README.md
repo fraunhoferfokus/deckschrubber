@@ -75,3 +75,39 @@ $GOPATH/bin/deckschrubber -latest 3
 ```
 $GOPATH/bin/deckschrubber -tag ^.*-SNAPSHOT$ 
 ```
+
+## Dockerize
+
+In order to have a minimum image footprint(~7+MB), the dockerize process had avoid to use the offical [golang image](https://hub.docker.com/_/golang/).
+But to compile golang app alone and build the image from [scratch](https://hub.docker.com/_/scratch/). 
+Please follow these steps to have a working image built and pushed:
+
+* **Create a image building workspace folder and create a `Dockerfile` like this**
+
+```
+FROM scratch
+ADD ca-certificates.crt /etc/ssl/certs/
+ADD main /
+ENTRYPOINT ["/main"]
+```
+
+* **Compile golang app with the following command and move the previous folder**
+
+```
+CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+mv main path/to/image/workspace
+mv /etc/ssl/certs/ca-certificates.crt path/to/image/workspace 
+```
+
+* **Build and push the image with proper tag**
+
+```
+docker build -t your.registry.com:5000/someproject/deckschrubber:20171025-3-SNAPSHOT .
+docker push your.registry.com:5000/someproject/deckschrubber:20171025-3-SNAPSHOT 
+```
+
+* **Run dechschrubber as image**
+
+```
+docker run --rm --name registry-retention-runner deckschrubber -registry http://your.registry.com:5000 -repo developer/myapp,developer/deckschrubber -username someone -password urpwd -insecure
+```
