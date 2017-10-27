@@ -31,8 +31,8 @@ var (
 	/** CLI flags */
 	// Base URL of registry
 	registryURL, username, password *string
-	// Regexps for filtering repositories and tags
-	repoRegexp, tagRegexp *string
+	// Flags to filter repos/tags
+	repoRegexp, tagRegexp, repos *string
 	// Maximum age of image to consider for deletion
 	day, month, year *int
 	// Number of the latest n matching images of an repository that will be ignored
@@ -49,6 +49,8 @@ var (
 
 const (
 	version string = "0.3.0"
+	// Max repos: 65535
+	maxRepoCount uint16 = 1<<16 - 1
 )
 
 func init() {
@@ -66,9 +68,11 @@ func init() {
 	// Maximum age of iamges to consider for deletion in years (default = 0)
 	year = flag.Int("year", 0, "max age in days")
 	// Regexp for images (default = .*)
-	repoRegexp = flag.String("repo", ".*", "matching repositories (allows mulitple value seperates by ,)")
+	repoRegexp = flag.String("repo_regexp", ".*", "matching repositories (allows regexp)")
+	// images to check directly (default = "")
+	repos = flag.String("repos", "", "matching repositories by name (allows mulitple value seperates by ,)")
 	// Regexp for tags (default = .*)
-	tagRegexp = flag.String("tag", ".*", "matching tags (allows regexp)")
+	tagRegexp = flag.String("tag_regexp", ".*", "matching tags (allows regexp)")
 	// The number of the latest matching images of an repository that won't be deleted
 	latest = flag.Int("latest", 1, "number of the latest matching images of an repository that won't be deleted")
 	// Dry run option (doesn't actually delete)
@@ -111,20 +115,20 @@ func main() {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
 
-	fetchAll := strings.Compare(*repoRegexp, ".*") == 0
+	fetchByRegexp := len(*repos) == 0
 
 	// List of all repositories fetched from the registry.
-	var entries []string
+	entries := make([]string, maxRepoCount)
 	numFilled := 0
-	if fetchAll {
+	if fetchByRegexp {
 		// Fetch all repositories from the registry
-		numFilled, err := r.Repositories(ctx, entries, "")
+		numFilled, err = r.Repositories(ctx, entries, "")
 		if err != nil && err != io.EOF {
 			log.Fatalf("Error while fetching repositories! (err: %v)", err)
 		}
-		log.WithFields(log.Fields{"count": numFilled, "entries": entries}).Info("Successfully fetched repositories.")
+		log.WithFields(log.Fields{"count": numFilled, "entries": entries[:numFilled]}).Info("Successfully fetched repositories.")
 	} else {
-		entries = strings.Split(*repoRegexp, ",")
+		entries = strings.Split(*repos, ",")
 		numFilled = len(entries)
 	}
 
@@ -133,6 +137,15 @@ func main() {
 	// Fetch information about images belonging to each repository
 	for _, entry := range entries[:numFilled] {
 		logger := log.WithField("repo", entry)
+
+		if fetchByRegexp && strings.Compare(*repoRegexp, ".*") != 0 {
+			matched, _ := regexp.MatchString(*repoRegexp, entry)
+
+			if matched == false {
+				logger.Debug("Ignore non matching repository (-repo_regexp=", *repoRegexp, ")")
+				continue
+			}
+		}
 
 		// Establish repository object in registry
 		repoName, err := reference.WithName(entry)
