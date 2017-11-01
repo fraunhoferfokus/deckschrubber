@@ -33,6 +33,8 @@ var (
 	registryURL, username, password *string
 	// Flags to filter repos/tags
 	repoRegexp, tagRegexp, repos *string
+	// Maximum number of repositories to fetch
+	maxRepos *int
 	// Maximum age of image to consider for deletion
 	day, month, year *int
 	// Number of the latest n matching images of an repository that will be ignored
@@ -50,7 +52,7 @@ var (
 const (
 	version string = "0.3.0"
 	// Max repos: 65535
-	maxRepoCount uint16 = 1<<16 - 1
+	maxRepoCount int = 65535
 )
 
 func init() {
@@ -71,6 +73,8 @@ func init() {
 	repoRegexp = flag.String("repo_regexp", ".*", "matching repositories (allows regexp)")
 	// images to check directly (default = "")
 	repos = flag.String("repos", "", "matching repositories by name (allows mulitple value seperates by ,)")
+	// max nubmer of repositories to garbage collect (default to no limit)
+	maxRepos = flag.Int("max_repos", maxRepoCount, "max nubmer of repositories to garbage collect (default to 65535)")
 	// Regexp for tags (default = .*)
 	tagRegexp = flag.String("tag_regexp", ".*", "matching tags (allows regexp)")
 	// The number of the latest matching images of an repository that won't be deleted
@@ -118,7 +122,7 @@ func main() {
 	fetchByRegexp := len(*repos) == 0
 
 	// List of all repositories fetched from the registry.
-	entries := make([]string, maxRepoCount)
+	entries := make([]string, *maxRepos)
 	numFilled := 0
 	if fetchByRegexp {
 		// Fetch all repositories from the registry

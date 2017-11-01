@@ -41,6 +41,8 @@ We run our own private registry on a server with limited storage and it was only
       matching repositories by name (allows mulitple value seperates by ,); If specified will ignore `-repo_regexp`
 -repo_regexp string
       matching repositories (allows regexp) (default ".*")
+-max_repos int
+      max nubmer of repositories to garbage collect (default to no limit)
 -tag_regexp string
       matching tags (allows regexp) (default ".*")
 -latest int
@@ -83,24 +85,14 @@ $GOPATH/bin/deckschrubber -tag_regexp ^.*-SNAPSHOT$
 ## Dockerize
 
 In order to have a minimum image footprint(~7+MB), the dockerize process had avoid to use the offical [golang image](https://hub.docker.com/_/golang/).
-But to compile golang app alone and build the image from [scratch](https://hub.docker.com/_/scratch/). 
+But to compile golang app alone and build the image from a minimum image that only container a CA certificate [centurylink/ca-certs](https://hub.docker.com/r/centurylink/ca-certs/). 
 Please follow these steps to have a working image built and pushed:
 
-* **Create a image building workspace folder and create a `Dockerfile` like this**
 
-```
-FROM scratch
-ADD ca-certificates.crt /etc/ssl/certs/
-ADD main /
-ENTRYPOINT ["/main"]
-```
-
-* **Compile golang app with the following command and move to previous folder**
+* **Compile golang app with the following command**
 
 ```
 CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
-mv main path/to/image/workspace
-mv /etc/ssl/certs/ca-certificates.crt path/to/image/workspace 
 ```
 
 * **Build and push the image with proper tag**
@@ -113,5 +105,5 @@ docker push your.registry.com:5000/someproject/deckschrubber:20171025-3-SNAPSHOT
 * **Run deckschrubber as image**
 
 ```
-docker run --rm --name registry-retention-runner lhanxetus/deckschrubber -registry http://your.registry.com:5000 -repos developer/myapp,developer/deckschrubber -username someone -password urpwd -insecure
+docker run --rm --name registry-retention-runner  your.registry.com:5000/someproject/deckschrubber -registry http://your.registry.com:5000 -repos developer/myapp,developer/deckschrubber -username someone -password urpwd -insecure
 ```
