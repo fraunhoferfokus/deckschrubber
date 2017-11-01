@@ -10,10 +10,8 @@ Deckschrubber inspects images of a [Docker Registry](https://docs.docker.com/reg
 
 ```bash
 # Use GOLANG
-go get github.com/x-lhan/deckschrubber
+go get github.com/fraunhoferfokus/deckschrubber
 $GOPATH/bin/deckschrubber
-# OR Docker
-docker run --rm --name registry-retention-runner lhanxetus/deckschrubber -registry http://your.registry.com:5000 -repos developer/myapp,developer/deckschrubber -username someone -password urpwd -insecure
 ```
 
 ## Why this?
