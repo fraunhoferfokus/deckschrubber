@@ -250,14 +250,20 @@ func main() {
 			continue
 		}
 		latestDigests := make(map[string]bool)
-		for _, tag := range tags[len(tags)-*latest:] {
+		var latestStart int
+		if *latest > len(tags) {
+			latestStart = 0
+		} else {
+			latestStart = len(tags) - *latest
+		}
+		for _, tag := range tags[latestStart:] {
 			latestDigests[tag.Digest] = true
 		}
 
 		for tagIndex, tag := range tags[:tagCount] {
 			tagLogger := logger.WithField("tag", tag)
 			if tagIndex > tagCount-1-*latest {
-				tagLogger.WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", *latest, *latest)
+				tagLogger.WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", tagIndex+1, *latest)
 				continue
 			}
 

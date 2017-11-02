@@ -83,7 +83,7 @@ $GOPATH/bin/deckschrubber -tag_regexp ^.*-SNAPSHOT$
 ## Dockerize
 
 In order to have a minimum image footprint(~7+MB), the dockerize process had avoid to use the offical [golang image](https://hub.docker.com/_/golang/).
-But to compile golang app alone and build the image from a minimum image that only container a CA certificate [centurylink/ca-certs](https://hub.docker.com/r/centurylink/ca-certs/). 
+But to compile golang app alone and build the image from a minimum image that only contains a standard CA certificate [centurylink/ca-certs](https://hub.docker.com/r/centurylink/ca-certs/).
 Please follow these steps to have a working image built and pushed:
 
 
