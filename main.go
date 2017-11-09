@@ -47,6 +47,8 @@ var (
 	ver *bool
 	// If true, https connection will ignore verification error
 	insecure *bool
+	// If ture, promote user to enter registry password
+	enterPwd *bool
 )
 
 const (
@@ -63,6 +65,8 @@ func init() {
 	username = flag.String("username", "", "registry username to login")
 	// registry password (default = "")
 	password = flag.String("password", "", "registry password to login")
+	// Promote to enter password
+	enterPwd = flag.Bool("promote", false, "promote to enter password")
 	// Maximum age of iamges to consider for deletion in days (default = 0)
 	day = flag.Int("day", 0, "max age in days")
 	// Maximum age of months to consider for deletion in days (default = 0)
@@ -100,6 +104,12 @@ func main() {
 	if *debug {
 		log.SetLevel(log.DebugLevel)
 	}
+
+	if *enterPwd {
+		fmt.Println("Enter registry login password:")
+		fmt.Scanln(password)
+	}
+
 	// Empty context for all requests in sequel
 	ctx := context.Background()
 	transport := http.DefaultTransport

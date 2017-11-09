@@ -33,6 +33,8 @@ We run our own private registry on a server with limited storage and it was only
       username for docker login
 -password string
       password for docker login
+-promote
+      promote user to enter docker login password; If specified will ignore `-password`
 -insecure
       ignore https verification error
 -repos
