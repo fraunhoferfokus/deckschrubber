@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"encoding/json"
@@ -15,23 +16,27 @@ import (
 
 	"regexp"
 
+	"crypto/tls"
+	"net/http"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
+	"github.com/heroku/docker-registry-client/registry"
 )
 
 var (
 	/** CLI flags */
 	// Base URL of registry
-	registryURL *string
-	// Regexps for filtering repositories and tags
-	repoRegexp, tagRegexp *string
+	registryURL, username, password *string
+	// Flags to filter repos/tags
+	repoRegexp, tagRegexp, repos *string
+	// Maximum number of repositories to fetch
+	maxRepos *int
 	// Maximum age of image to consider for deletion
 	day, month, year *int
-	// Max number of repositories to be fetched from registry
-	repoCount *int
 	// Number of the latest n matching images of an repository that will be ignored
 	latest *int
 	// If true, application runs in debug mode
@@ -40,18 +45,28 @@ var (
 	dry *bool
 	// If true, version is shown and program quits
 	ver *bool
+	// If true, https connection will ignore verification error
+	insecure *bool
+	// If ture, promote user to enter registry password
+	enterPwd *bool
 )
 
 const (
 	version string = "0.3.0"
+	// Max repos: 65535
+	maxRepoCount int = 65535
 )
 
 func init() {
 	/** CLI flags */
-	// Max number of repositories to fetch from registry (default = 5)
-	repoCount = flag.Int("repos", 5, "number of repositories to garbage collect")
 	// Base URL of registry (default = http://localhost:5000)
 	registryURL = flag.String("registry", "http://localhost:5000", "URL of registry")
+	// registry username (default = "")
+	username = flag.String("username", "", "registry username to login")
+	// registry password (default = "")
+	password = flag.String("password", "", "registry password to login")
+	// Promote to enter password
+	enterPwd = flag.Bool("promote", false, "promote to enter password")
 	// Maximum age of iamges to consider for deletion in days (default = 0)
 	day = flag.Int("day", 0, "max age in days")
 	// Maximum age of months to consider for deletion in days (default = 0)
@@ -59,15 +74,21 @@ func init() {
 	// Maximum age of iamges to consider for deletion in years (default = 0)
 	year = flag.Int("year", 0, "max age in days")
 	// Regexp for images (default = .*)
-	repoRegexp = flag.String("repo", ".*", "matching repositories (allows regexp)")
+	repoRegexp = flag.String("repo_regexp", ".*", "matching repositories (allows regexp)")
+	// images to check directly (default = "")
+	repos = flag.String("repos", "", "matching repositories by name (allows mulitple value seperates by ,)")
+	// max nubmer of repositories to garbage collect (default to no limit)
+	maxRepos = flag.Int("max_repos", maxRepoCount, "max nubmer of repositories to garbage collect (default to 65535)")
 	// Regexp for tags (default = .*)
-	tagRegexp = flag.String("tag", ".*", "matching tags (allows regexp)")
+	tagRegexp = flag.String("tag_regexp", ".*", "matching tags (allows regexp)")
 	// The number of the latest matching images of an repository that won't be deleted
 	latest = flag.Int("latest", 1, "number of the latest matching images of an repository that won't be deleted")
 	// Dry run option (doesn't actually delete)
 	debug = flag.Bool("debug", false, "run in debug mode")
 	// Dry run option (doesn't actually delete)
 	dry = flag.Bool("dry", false, "does not actually deletes")
+	// https insecure flag
+	insecure = flag.Bool("insecure", false, "ignore https verification error")
 	// Shows version
 	ver = flag.Bool("v", false, "shows version and quits")
 }
@@ -84,26 +105,46 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	if *enterPwd {
+		fmt.Println("Enter registry login password:")
+		fmt.Scanln(password)
+	}
+
+	// Empty context for all requests in sequel
+	ctx := context.Background()
+	transport := http.DefaultTransport
+	if *insecure {
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+	}
+
+	wrapTransport := registry.WrapTransport(transport, *registryURL,
+		*username, *password)
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, nil)
+	r, err := client.NewRegistry(ctx, *registryURL, wrapTransport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
 
-	// List of all repositories fetched from the registry. The number
-	// of fetched repositories depends on the number provided by the
-	// user ('-repos' flag)
-	entries := make([]string, *repoCount)
+	fetchByRegexp := len(*repos) == 0
 
-	// Empty context for all requests in sequel
-	ctx := context.Background()
-
-	// Fetch all repositories from the registry
-	numFilled, err := r.Repositories(ctx, entries, "")
-	if err != nil && err != io.EOF {
-		log.Fatalf("Error while fetching repositories! (err: %v)", err)
+	// List of all repositories fetched from the registry.
+	entries := make([]string, *maxRepos)
+	numFilled := 0
+	if fetchByRegexp {
+		// Fetch all repositories from the registry
+		numFilled, err = r.Repositories(ctx, entries, "")
+		if err != nil && err != io.EOF {
+			log.Fatalf("Error while fetching repositories! (err: %v)", err)
+		}
+		log.WithFields(log.Fields{"count": numFilled, "entries": entries[:numFilled]}).Info("Successfully fetched repositories.")
+	} else {
+		entries = strings.Split(*repos, ",")
+		numFilled = len(entries)
 	}
-	log.WithFields(log.Fields{"count": numFilled, "entries": entries}).Info("Successfully fetched repositories.")
 
 	repoImages := make(map[string][]Image)
 
@@ -111,11 +152,13 @@ func main() {
 	for _, entry := range entries[:numFilled] {
 		logger := log.WithField("repo", entry)
 
-		matched, err := regexp.MatchString(*repoRegexp, entry)
+		if fetchByRegexp && strings.Compare(*repoRegexp, ".*") != 0 {
+			matched, _ := regexp.MatchString(*repoRegexp, entry)
 
-		if matched == false {
-			logger.WithFields(log.Fields{"entry": entry}).Debug("Ignore non matching repository (-repo=", *repoRegexp, ")")
-			continue
+			if matched == false {
+				logger.Debug("Ignore non matching repository (-repo_regexp=", *repoRegexp, ")")
+				continue
+			}
 		}
 
 		// Establish repository object in registry
@@ -125,7 +168,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, nil)
+		repo, err := client.NewRepository(ctx, repoName, *registryURL, wrapTransport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
@@ -192,7 +235,9 @@ func main() {
 			var blobInfo BlobInfo
 			json.Unmarshal(b, &blobInfo)
 
-			images = append(images, Image{entry, tag, blobInfo.Created, func() error { return manifestService.Delete(context.Background(), desc.Digest) }})
+			images = append(images,
+				Image{entry, tag, desc.Digest.String(), blobInfo.Created,
+					func() error { return manifestService.Delete(ctx, desc.Digest) }})
 		}
 
 		sort.Sort(ImageByDate(images))
@@ -214,25 +259,40 @@ func main() {
 			logger.Debug("Ignore repository with no matching tags")
 			continue
 		}
+		latestDigests := make(map[string]bool)
+		var latestStart int
+		if *latest > len(tags) {
+			latestStart = 0
+		} else {
+			latestStart = len(tags) - *latest
+		}
+		for _, tag := range tags[latestStart:] {
+			latestDigests[tag.Digest] = true
+		}
 
 		for tagIndex, tag := range tags[:tagCount] {
-
+			tagLogger := logger.WithField("tag", tag)
 			if tagIndex > tagCount-1-*latest {
-				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", *latest, *latest)
+				tagLogger.WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", tagIndex+1, *latest)
 				continue
 			}
 
 			if tag.Time.Before(deadline) {
-				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Delete outdated image (-dry=%v)", *dry)
+				tagLogger.WithField("time", tag.Time).Infof("Delete outdated image (-dry=%v)", *dry)
 
 				if !*dry {
-					err := tag.Delete()
-					if err != nil {
-						logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+					if latestDigests[tag.Digest] {
+						tagLogger.WithField("digest", tag.Digest).Info("Duplicate with lastest matching images, cannot delete image skip.")
+					} else {
+						err := tag.Delete()
+						if err != nil {
+							tagLogger.Error("Could not delete image!")
+						}
 					}
+
 				}
 			} else {
-				logger.WithField("tag", tag.Tag).Debug("Image not outdated")
+				tagLogger.Debug("Image not outdated")
 			}
 		}
 	}
