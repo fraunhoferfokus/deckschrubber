@@ -105,7 +105,9 @@ func main() {
 	}
 	log.WithFields(log.Fields{"count": numFilled, "entries": entries}).Info("Successfully fetched repositories.")
 
-	repoImages := make(map[string][]Image)
+	// Deadline defines the youngest creation date for an image
+	// to be considered for deletion
+	deadline := time.Now().AddDate(*year/-1, *month/-1, *day/-1)
 
 	// Fetch information about images belonging to each repository
 	for _, entry := range entries[:numFilled] {
@@ -138,45 +140,42 @@ func main() {
 			logger.Fatalf("Couldn't fetch manifest service! (err: %v)", err)
 		}
 
-		tags, err := tagsService.All(ctx)
+		tagsData, err := tagsService.All(ctx)
 		if err != nil {
 			logger.Fatalf("Couldn't fetch tags! (err: %v)", err)
 		}
 
-		var images []Image
+		var tags []Image
 
 		// Fetch information about each tag of a repository
 		// This involves fetching the manifest, its details,
 		// and the corresponding blob information
-		for _, tag := range tags {
+		tagFetchDataErrors := false
+		for _, tag := range tagsData {
 			tagLogger := logger.WithField("tag", tag)
-
-			matched, _ := regexp.MatchString(*tagRegexp, tag)
-
-			if !matched {
-				tagLogger.Debug("Ignore non matching tag (-tag=", *tagRegexp, ")")
-				continue
-			}
 
 			tagLogger.Debug("Fetching tag...")
 			desc, err := tagsService.Get(ctx, tag)
 			if err != nil {
 				tagLogger.Error("Could not fetch tag!")
-				continue
+				tagFetchDataErrors = true
+				break
 			}
 
 			tagLogger.Debug("Fetching manifest...")
 			mnfst, err := manifestService.Get(ctx, desc.Digest)
 			if err != nil {
 				tagLogger.Error("Could not fetch manifest!")
-				continue
+				tagFetchDataErrors = true
+				break
 			}
 
 			tagLogger.Debug("Parsing manifest details...")
 			_, p, err := mnfst.Payload()
 			if err != nil {
 				tagLogger.Error("Could not parse manifest detail!")
-				continue
+				tagFetchDataErrors = true
+				break
 			}
 
 			m := new(schema2.DeserializedManifest)
@@ -186,25 +185,25 @@ func main() {
 			b, err := blobsService.Get(ctx, m.Manifest.Config.Digest)
 			if err != nil {
 				tagLogger.Error("Could not fetch blob!")
-				continue
+				tagFetchDataErrors = true
+				break
 			}
 
 			var blobInfo BlobInfo
 			json.Unmarshal(b, &blobInfo)
 
-			images = append(images, Image{entry, tag, blobInfo.Created, func() error { return manifestService.Delete(context.Background(), desc.Digest) }})
+			tags = append(tags, Image{entry, tag, blobInfo.Created, desc})
 		}
 
-		sort.Sort(ImageByDate(images))
-		repoImages[entry] = images
-	}
+		if tagFetchDataErrors {
+			// In case of error at any one tag, skip entire repo
+			// (avoid acting on incomplete data, which migth lead to
+			// deleting images that are actually in use) 
+			logger.Error("Error obtaining tag data - skipping this repo")
+			continue
+		}
 
-	// Deadline defines the youngest creation date for an image
-	// to be considered for deletion
-	deadline := time.Now().AddDate(*year/-1, *month/-1, *day/-1)
-
-	for name, tags := range repoImages {
-		logger := log.WithField("repo", name)
+		sort.Sort(ImageByDate(tags))
 
 		logger.Debug("Analyzing tags...")
 
@@ -215,25 +214,77 @@ func main() {
 			continue
 		}
 
-		for tagIndex, tag := range tags[:tagCount] {
+		deletableTags := make(map[int] Image);
+		nonDeletableTags := make(map[int] Image);
 
-			if tagIndex > tagCount-1-*latest {
-				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Ignore %d latest matching images (-latest=%d)", *latest, *latest)
-				continue
-			}
+		ignoredTags := 0
 
-			if tag.Time.Before(deadline) {
-				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Delete outdated image (-dry=%v)", *dry)
+		for tagIndex := len(tags)-1; tagIndex >= 0; tagIndex-- {
+			tag := tags[tagIndex]
+			markForDeletion := false;
+			tagLogger := logger.WithField("tag", tag.Tag)
 
-				if !*dry {
-					err := tag.Delete()
-					if err != nil {
-						logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+			matched, _ := regexp.MatchString(*tagRegexp, tag.Tag)
+
+			if matched {
+				tagLogger.Debug("Tag matches, considering for deletion (-tag=", *tagRegexp, ")")
+				if tag.Time.Before(deadline) {
+					if ignoredTags < *latest {
+						tagLogger.WithField("time", tag.Time).Infof("Ignore %d latest matching tags (-latest=%d)", *latest, *latest)
+						ignoredTags += 1
+					} else {
+						tagLogger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Marking tag as outdated")
+						markForDeletion = true
 					}
+				} else {
+					tagLogger.Info("Tag not outdated")
+					ignoredTags += 1
 				}
 			} else {
-				logger.WithField("tag", tag.Tag).Debug("Image not outdated")
+				tagLogger.Info("Ignore non matching tag (-tag=", *tagRegexp, ")")
+			}
+
+			if markForDeletion {
+				deletableTags[tagIndex] = tag
+			} else {
+				nonDeletableTags[tagIndex] = tag
 			}
 		}
+
+		// This approach is actually a workaround for the problem that Docker Distribution doesn't implement TagService.Untag operation at the time of this writing
+		// Actually we have to delete the underlying image (specified via its Digest value), taking care not to delete images that are referenced by tags which we want to preserve
+		nonDeletableDigests := make(map[string] string)
+		for _, tag := range nonDeletableTags {
+			if nonDeletableDigests[tag.Descriptor.Digest.String()] == "" {
+				nonDeletableDigests[tag.Descriptor.Digest.String()] = tag.Tag
+			} else {
+				nonDeletableDigests[tag.Descriptor.Digest.String()] = nonDeletableDigests[tag.Descriptor.Digest.String()] + ", " + tag.Tag
+			}
+		}
+
+		digestsDeleted := make(map[string] bool)
+		for _, tag := range deletableTags {
+			if !digestsDeleted[tag.Descriptor.Digest.String()] {
+				if nonDeletableDigests[tag.Descriptor.Digest.String()] == "" {
+					logger.WithField("tag", tag.Tag).Info("All tags for this image digest marked for deletion")
+					if !*dry {
+						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Descriptor.Digest).Infof("Deleting image (-dry=%v)", *dry)
+						err := manifestService.Delete(context.Background(), tag.Descriptor.Digest) 
+						if err == nil {
+							digestsDeleted[tag.Descriptor.Digest.String()] = true
+						} else {
+							logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+						}
+					} else {
+						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Not actually deleting image (-dry=%v)", *dry)
+					}
+				} else {
+					logger.WithField("tag", tag.Tag).WithField("alsoUsedByTags", nonDeletableDigests[tag.Descriptor.Digest.String()]).Infof("The underlying image is also used by non-deletable tags - skipping deletion")
+				}
+			} else {
+				logger.WithField("tag", tag.Tag).Debug("Image under tag already deleted")
+			}
+		}
+
 	}
 }
