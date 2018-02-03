@@ -1,6 +1,11 @@
 package main
 
-import "time"
+import (
+        "time"
+
+        "github.com/docker/distribution"
+)
+
 
 // BlobInfo represents information about a specific Blob
 type BlobInfo struct {
@@ -12,7 +17,7 @@ type Image struct {
 	Repository string       // Name of repository to which image belongs
 	Tag        string       // Image's tag
 	Time       time.Time    // Creation time of the image
-	Delete     func() error // Function to delete image from registry
+	Descriptor distribution.Descriptor	// Underlying image descriptor
 }
 
 // ImageByDate represents an array of images
