@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"syscall"
 	"time"
 
 	"encoding/json"
@@ -15,11 +16,14 @@ import (
 
 	"regexp"
 
+	"golang.org/x/crypto/ssh/terminal"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
+	"github.com/fraunhoferfokus/deckschrubber/util"
 )
 
 var (
@@ -40,6 +44,10 @@ var (
 	dry *bool
 	// If true, version is shown and program quits
 	ver *bool
+	// Skip insecure TLS
+	insecure *bool
+	// Username and password
+	uname, passwd *string
 )
 
 const (
@@ -70,6 +78,11 @@ func init() {
 	dry = flag.Bool("dry", false, "does not actually deletes")
 	// Shows version
 	ver = flag.Bool("v", false, "shows version and quits")
+	// Skip insecure TLS
+	insecure = flag.Bool("insecure", false, "Skip insecure TLS verification")
+	// Username and password
+	uname = flag.String("user", "", "Username for basic authentication")
+	passwd = flag.String("password", "", "Password for basic authentication")
 }
 
 func main() {
@@ -84,8 +97,22 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	// Add basic auth if user/pass is provided
+	if *uname != "" && *passwd == "" {
+		fmt.Println("Password:")
+		bytePassword, err := terminal.ReadPassword(int(syscall.Stdin))
+		if err == nil {
+			stringPassword := string(bytePassword[:])
+			passwd = &stringPassword
+		} else {
+			fmt.Println("Could not read password. Quitting!")
+			os.Exit(1)
+		}
+	}
+	basicAuthTransport := util.NewBasicAuthTransport(*registryURL, *uname, *passwd, *insecure)
+
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, nil)
+	r, err := client.NewRegistry(*registryURL, basicAuthTransport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
