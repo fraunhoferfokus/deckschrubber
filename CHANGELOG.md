@@ -1,4 +1,7 @@
 # CHANGELOG
+* `0.4.0`:
+  * Corrected behavior with images that have more than one tag (bug #9)
+  * Changed the meaning of time-limit (e.g `-day`) in combination with `-latest` flag: it only takes into account whichever means more preserved matching tags
 * `0.3.0`: Adapt to new Docker Distribution API
 * `0.2.0`:
   * Null pointer bug fix

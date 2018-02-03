@@ -43,7 +43,7 @@ var (
 )
 
 const (
-	version string = "0.3.0"
+	version string = "0.4.0"
 )
 
 func init() {
@@ -198,7 +198,7 @@ func main() {
 		if tagFetchDataErrors {
 			// In case of error at any one tag, skip entire repo
 			// (avoid acting on incomplete data, which migth lead to
-			// deleting images that are actually in use) 
+			// deleting images that are actually in use)
 			logger.Error("Error obtaining tag data - skipping this repo")
 			continue
 		}
@@ -269,7 +269,7 @@ func main() {
 					logger.WithField("tag", tag.Tag).Info("All tags for this image digest marked for deletion")
 					if !*dry {
 						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Descriptor.Digest).Infof("Deleting image (-dry=%v)", *dry)
-						err := manifestService.Delete(context.Background(), tag.Descriptor.Digest) 
+						err := manifestService.Delete(context.Background(), tag.Descriptor.Digest)
 						if err == nil {
 							digestsDeleted[tag.Descriptor.Digest.String()] = true
 						} else {
