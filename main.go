@@ -231,14 +231,14 @@ func main() {
 				if tag.Time.Before(deadline) {
 					if ignoredTags < *latest {
 						tagLogger.WithField("time", tag.Time).Infof("Ignore %d latest matching tags (-latest=%d)", *latest, *latest)
-						ignoredTags += 1
+						ignoredTags++
 					} else {
 						tagLogger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Marking tag as outdated")
 						markForDeletion = true
 					}
 				} else {
 					tagLogger.Info("Tag not outdated")
-					ignoredTags += 1
+					ignoredTags++
 				}
 			} else {
 				tagLogger.Info("Ignore non matching tag (-tag=", *tagRegexp, ")")
