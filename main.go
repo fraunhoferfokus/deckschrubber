@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"encoding/json"
@@ -27,7 +28,7 @@ var (
 	// Base URL of registry
 	registryURL *string
 	// Regexps for filtering repositories and tags
-	repoRegexp, tagRegexp *string
+	repoRegexp, tagRegexp, negTagRegexp *string
 	// Maximum age of image to consider for deletion
 	day, month, year *int
 	// Max number of repositories to be fetched from registry
@@ -62,6 +63,8 @@ func init() {
 	repoRegexp = flag.String("repo", ".*", "matching repositories (allows regexp)")
 	// Regexp for tags (default = .*)
 	tagRegexp = flag.String("tag", ".*", "matching tags (allows regexp)")
+	// Negative regexp for tags (default = empty)
+	negTagRegexp = flag.String("ntag", "", "non matching tags (allows regexp)")
 	// The number of the latest matching images of an repository that won't be deleted
 	latest = flag.Int("latest", 1, "number of the latest matching images of an repository that won't be deleted")
 	// Dry run option (doesn't actually delete)
@@ -224,10 +227,25 @@ func main() {
 			markForDeletion := false
 			tagLogger := logger.WithField("tag", tag.Tag)
 
-			matched, _ := regexp.MatchString(*tagRegexp, tag.Tag)
+			// Provides a text which is followed by the tag and ntag flag values. The
+			// latter iff defined.
+			withTagParens := func(text string) string {
+				xs := []string{fmt.Sprintf("-tag=%s", *tagRegexp)}
+				if *negTagRegexp != "" {
+					xs = append(xs, fmt.Sprintf("-ntag=%s", *negTagRegexp))
+				}
+				return fmt.Sprintf("%s (%s)", text, strings.Join(xs, ", "))
+			}
+
+			// Check whether the tag matches. If that's the case, don't stop there, and
+			// check for the negative regexp as well.
+			if matched, _ := regexp.MatchString(*tagRegexp, tag.Tag); matched && *negTagRegexp != "" {
+				negTagMatch, _ := regexp.MatchString(*negTagRegexp, tag.Tag)
+				matched = !negTagMatch
+			}
 
 			if matched {
-				tagLogger.Debug("Tag matches, considering for deletion (-tag=", *tagRegexp, ")")
+				tagLogger.Debug(withTagParens("Tag matches, considering for deletion"))
 				if tag.Time.Before(deadline) {
 					if ignoredTags < *latest {
 						tagLogger.WithField("time", tag.Time).Infof("Ignore %d latest matching tags (-latest=%d)", *latest, *latest)
@@ -241,7 +259,7 @@ func main() {
 					ignoredTags++
 				}
 			} else {
-				tagLogger.Info("Ignore non matching tag (-tag=", *tagRegexp, ")")
+				tagLogger.Info(withTagParens("Ignore non matching tag"))
 			}
 
 			if markForDeletion {
