@@ -214,14 +214,14 @@ func main() {
 			continue
 		}
 
-		deletableTags := make(map[int] Image);
-		nonDeletableTags := make(map[int] Image);
+		deletableTags := make(map[int]Image)
+		nonDeletableTags := make(map[int]Image)
 
 		ignoredTags := 0
 
-		for tagIndex := len(tags)-1; tagIndex >= 0; tagIndex-- {
+		for tagIndex := len(tags) - 1; tagIndex >= 0; tagIndex-- {
 			tag := tags[tagIndex]
-			markForDeletion := false;
+			markForDeletion := false
 			tagLogger := logger.WithField("tag", tag.Tag)
 
 			matched, _ := regexp.MatchString(*tagRegexp, tag.Tag)
@@ -253,7 +253,7 @@ func main() {
 
 		// This approach is actually a workaround for the problem that Docker Distribution doesn't implement TagService.Untag operation at the time of this writing
 		// Actually we have to delete the underlying image (specified via its Digest value), taking care not to delete images that are referenced by tags which we want to preserve
-		nonDeletableDigests := make(map[string] string)
+		nonDeletableDigests := make(map[string]string)
 		for _, tag := range nonDeletableTags {
 			if nonDeletableDigests[tag.Descriptor.Digest.String()] == "" {
 				nonDeletableDigests[tag.Descriptor.Digest.String()] = tag.Tag
@@ -262,7 +262,7 @@ func main() {
 			}
 		}
 
-		digestsDeleted := make(map[string] bool)
+		digestsDeleted := make(map[string]bool)
 		for _, tag := range deletableTags {
 			if !digestsDeleted[tag.Descriptor.Digest.String()] {
 				if nonDeletableDigests[tag.Descriptor.Digest.String()] == "" {

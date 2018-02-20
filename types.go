@@ -1,11 +1,10 @@
 package main
 
 import (
-        "time"
+	"time"
 
-        "github.com/docker/distribution"
+	"github.com/docker/distribution"
 )
-
 
 // BlobInfo represents information about a specific Blob
 type BlobInfo struct {
@@ -14,10 +13,10 @@ type BlobInfo struct {
 
 // Image represents a docker image with a specific tag
 type Image struct {
-	Repository string       // Name of repository to which image belongs
-	Tag        string       // Image's tag
-	Time       time.Time    // Creation time of the image
-	Descriptor distribution.Descriptor	// Underlying image descriptor
+	Repository string                  // Name of repository to which image belongs
+	Tag        string                  // Image's tag
+	Time       time.Time               // Creation time of the image
+	Descriptor distribution.Descriptor // Underlying image descriptor
 }
 
 // ImageByDate represents an array of images
