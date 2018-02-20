@@ -28,7 +28,7 @@ var (
 	// Base URL of registry
 	registryURL *string
 	// Regexps for filtering repositories and tags
-	repoRegexp, tagRegexp, negTagRegexp *string
+	repoRegexpStr, tagRegexpStr, negTagRegexpStr *string
 	// Maximum age of image to consider for deletion
 	day, month, year *int
 	// Max number of repositories to be fetched from registry
@@ -41,6 +41,9 @@ var (
 	dry *bool
 	// If true, version is shown and program quits
 	ver *bool
+
+	// Compiled regexps
+	repoRegexp, tagRegexp, negTagRegexp *regexp.Regexp
 )
 
 const (
@@ -60,11 +63,11 @@ func init() {
 	// Maximum age of iamges to consider for deletion in years (default = 0)
 	year = flag.Int("year", 0, "max age in days")
 	// Regexp for images (default = .*)
-	repoRegexp = flag.String("repo", ".*", "matching repositories (allows regexp)")
+	repoRegexpStr = flag.String("repo", ".*", "matching repositories (allows regexp)")
 	// Regexp for tags (default = .*)
-	tagRegexp = flag.String("tag", ".*", "matching tags (allows regexp)")
+	tagRegexpStr = flag.String("tag", ".*", "matching tags (allows regexp)")
 	// Negative regexp for tags (default = empty)
-	negTagRegexp = flag.String("ntag", "", "non matching tags (allows regexp)")
+	negTagRegexpStr = flag.String("ntag", "", "non matching tags (allows regexp)")
 	// The number of the latest matching images of an repository that won't be deleted
 	latest = flag.Int("latest", 1, "number of the latest matching images of an repository that won't be deleted")
 	// Dry run option (doesn't actually delete)
@@ -77,6 +80,13 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	// Compile regular expressions
+	repoRegexp = regexp.MustCompile(*repoRegexpStr)
+	tagRegexp = regexp.MustCompile(*tagRegexpStr)
+	if *negTagRegexpStr != "" {
+		negTagRegexp = regexp.MustCompile(*negTagRegexpStr)
+	}
 
 	if *ver {
 		fmt.Printf("Version: %s\n", version)
@@ -116,10 +126,10 @@ func main() {
 	for _, entry := range entries[:numFilled] {
 		logger := log.WithField("repo", entry)
 
-		matched, err := regexp.MatchString(*repoRegexp, entry)
+		matched := repoRegexp.MatchString(entry)
 
-		if matched == false {
-			logger.WithFields(log.Fields{"entry": entry}).Debug("Ignore non matching repository (-repo=", *repoRegexp, ")")
+		if !matched {
+			logger.WithFields(log.Fields{"entry": entry}).Debug("Ignore non matching repository (-repo=", *repoRegexpStr, ")")
 			continue
 		}
 
@@ -230,17 +240,18 @@ func main() {
 			// Provides a text which is followed by the tag and ntag flag values. The
 			// latter iff defined.
 			withTagParens := func(text string) string {
-				xs := []string{fmt.Sprintf("-tag=%s", *tagRegexp)}
-				if *negTagRegexp != "" {
-					xs = append(xs, fmt.Sprintf("-ntag=%s", *negTagRegexp))
+				xs := []string{fmt.Sprintf("-tag=%s", *tagRegexpStr)}
+				if *negTagRegexpStr != "" {
+					xs = append(xs, fmt.Sprintf("-ntag=%s", *negTagRegexpStr))
 				}
 				return fmt.Sprintf("%s (%s)", text, strings.Join(xs, ", "))
 			}
 
 			// Check whether the tag matches. If that's the case, don't stop there, and
 			// check for the negative regexp as well.
-			if matched, _ := regexp.MatchString(*tagRegexp, tag.Tag); matched && *negTagRegexp != "" {
-				negTagMatch, _ := regexp.MatchString(*negTagRegexp, tag.Tag)
+			matched := tagRegexp.MatchString(tag.Tag)
+			if matched && negTagRegexp != nil {
+				negTagMatch := negTagRegexp.MatchString(tag.Tag)
 				matched = !negTagMatch
 			}
 
