@@ -251,8 +251,12 @@ func main() {
 			}
 		}
 
-		// This approach is actually a workaround for the problem that Docker Distribution doesn't implement TagService.Untag operation at the time of this writing
-		// Actually we have to delete the underlying image (specified via its Digest value), taking care not to delete images that are referenced by tags which we want to preserve
+		// This approach is actually a workaround for the problem that Docker
+		// Distribution doesn't implement TagService.Untag operation at the time of
+		// this writing.
+		// Actually we have to delete the underlying image (specified via its Digest
+		// value), taking care not to delete images that are referenced by tags which
+		// we want to preserve
 		nonDeletableDigests := make(map[string]string)
 		for _, tag := range nonDeletableTags {
 			if nonDeletableDigests[tag.Descriptor.Digest.String()] == "" {
