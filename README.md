@@ -39,6 +39,8 @@ We run our own private registry on a server with limited storage and it was only
       number of repositories to garbage collect (default 5)
 -tag string
       matching tags (allows regexp) (default ".*")      
+-ntag string
+      match everything but this tag (allows regexp) (default empty)
 -v    shows version and quits
 -year int
       max age in days
