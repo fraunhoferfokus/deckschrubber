@@ -79,7 +79,7 @@ $GOPATH/bin/deckschrubber -latest 3
 ```
 $GOPATH/bin/deckschrubber -tag ^.*-SNAPSHOT$ 
 ```
-##Docker wrapper
+## Docker wrapper
 
 To avoid having to setup a GO environment on your machine you can build and run it inside a Docker container.
 
