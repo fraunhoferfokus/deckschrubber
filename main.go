@@ -167,7 +167,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, nil)
+		repo, err := client.NewRepository(repoName, *registryURL, basicAuthTransport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
