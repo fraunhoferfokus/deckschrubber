@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -21,12 +22,19 @@ import (
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/registry"
 )
 
 var (
 	/** CLI flags */
 	// Base URL of registry
 	registryURL *string
+	// Username for registry
+	registryUsername *string
+	// Password for registry
+	registryPassword *string
+
 	// Regexps for filtering repositories and tags
 	repoRegexpStr, tagRegexpStr, negTagRegexpStr *string
 	// Maximum age of image to consider for deletion
@@ -56,6 +64,10 @@ func init() {
 	repoCount = flag.Int("repos", 5, "number of repositories to garbage collect")
 	// Base URL of registry (default = http://localhost:5000)
 	registryURL = flag.String("registry", "http://localhost:5000", "URL of registry")
+	// Username for registry (optional)
+	registryUsername = flag.String("user", "", "Username for registry")
+	// Password for registry (optional)
+	registryPassword = flag.String("password", "", "Password for registry")
 	// Maximum age of iamges to consider for deletion in days (default = 0)
 	day = flag.Int("day", 0, "max age in days")
 	// Maximum age of months to consider for deletion in days (default = 0)
@@ -98,7 +110,16 @@ func main() {
 	}
 
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, nil)
+	transport := http.DefaultTransport
+	if *registryUsername != "" {
+		log.Infof("Using authentication transport with username: %s", *registryUsername)
+
+		registryAuth := &types.AuthConfig{}
+		registryAuth.Username = *registryUsername
+		registryAuth.Password = *registryPassword
+		transport = registry.AuthTransport(transport, registryAuth, true)
+	}
+	r, err := client.NewRegistry(*registryURL, transport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
@@ -140,7 +161,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, nil)
+		repo, err := client.NewRepository(repoName, *registryURL, transport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
@@ -306,7 +327,7 @@ func main() {
 						if err == nil {
 							digestsDeleted[tag.Descriptor.Digest.String()] = true
 						} else {
-							logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+							logger.WithField("tag", tag.Tag).WithField("err", err).Error("Could not delete image!")
 						}
 					} else {
 						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Not actually deleting image (-dry=%v)", *dry)
