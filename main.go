@@ -333,7 +333,7 @@ func main() {
 						if err == nil {
 							digestsDeleted[tag.Descriptor.Digest.String()] = true
 						} else {
-							logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+							logger.WithField("tag", tag.Tag).WithField("err", err).Error("Could not delete image!")
 						}
 					} else {
 						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Not actually deleting image (-dry=%v)", *dry)
