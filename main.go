@@ -3,6 +3,7 @@ package main
 import (
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"encoding/json"
@@ -16,11 +17,14 @@ import (
 
 	"regexp"
 
+	"golang.org/x/crypto/ssh/terminal"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
+	"github.com/fraunhoferfokus/deckschrubber/util"
 )
 
 var (
@@ -44,10 +48,14 @@ var (
 
 	// Compiled regexps
 	repoRegexp, tagRegexp, negTagRegexp *regexp.Regexp
+	// Skip insecure TLS
+	insecure *bool
+	// Username and password
+	uname, passwd *string
 )
 
 const (
-	version string = "0.5.0"
+	version string = "0.6.0"
 )
 
 func init() {
@@ -76,6 +84,11 @@ func init() {
 	dry = flag.Bool("dry", false, "does not actually deletes")
 	// Shows version
 	ver = flag.Bool("v", false, "shows version and quits")
+	// Skip insecure TLS
+	insecure = flag.Bool("insecure", false, "Skip insecure TLS verification")
+	// Username and password
+	uname = flag.String("user", "", "Username for basic authentication")
+	passwd = flag.String("password", "", "Password for basic authentication")
 }
 
 func main() {
@@ -97,8 +110,22 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	// Add basic auth if user/pass is provided
+	if *uname != "" && *passwd == "" {
+		fmt.Println("Password:")
+		bytePassword, err := terminal.ReadPassword(int(syscall.Stdin))
+		if err == nil {
+			stringPassword := string(bytePassword[:])
+			passwd = &stringPassword
+		} else {
+			fmt.Println("Could not read password. Quitting!")
+			os.Exit(1)
+		}
+	}
+	basicAuthTransport := util.NewBasicAuthTransport(*registryURL, *uname, *passwd, *insecure)
+
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, nil)
+	r, err := client.NewRegistry(*registryURL, basicAuthTransport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
@@ -140,7 +167,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, nil)
+		repo, err := client.NewRepository(repoName, *registryURL, basicAuthTransport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
@@ -306,7 +333,7 @@ func main() {
 						if err == nil {
 							digestsDeleted[tag.Descriptor.Digest.String()] = true
 						} else {
-							logger.WithField("tag", tag.Tag).Error("Could not delete image!")
+							logger.WithField("tag", tag.Tag).WithField("err", err).Error("Could not delete image!")
 						}
 					} else {
 						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Not actually deleting image (-dry=%v)", *dry)
