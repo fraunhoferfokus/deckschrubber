@@ -1,4 +1,5 @@
 # CHANGELOG
+* `0.6.0`: Add basic authentication
 * `0.5.0`: Add `ntag` flag to match "everything but this" tags
 * `0.4.0`:
   * Corrected behavior with images that have more than one tag (bug #9)
