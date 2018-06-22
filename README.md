@@ -48,6 +48,17 @@ We run our own private registry on a server with limited storage and it was only
       
 ```
 
+## Registry preparation
+Deckschrubber uses the Docker Registry API. 
+Its delete endpoint is disabled by default, you have to enable it with the following entry in the registry configuration file: 
+
+```
+delete:
+  enabled: true
+```
+
+See [the documentation](https://github.com/docker/distribution/blob/master/docs/configuration.md#delete) for details. 
+
 ## Examples
 
 * **Remove all images older than 2 months and 2 days**
