@@ -43,7 +43,7 @@ We run our own private registry on a server with limited storage and it was only
       match everything but this tag (allows regexp) (default empty)
 -v    shows version and quits
 -year int
-      max age in days
+      max age in years
       
       
 ```
