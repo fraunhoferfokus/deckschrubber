@@ -204,6 +204,9 @@ func main() {
 			tagLogger.Debug("Fetching tag...")
 			desc, err := tagsService.Get(ctx, tag)
 			if err != nil {
+				if *debug {
+					tagLogger.WithError(err)
+				}
 				tagLogger.Error("Could not fetch tag!")
 				continue
 			}
@@ -211,6 +214,9 @@ func main() {
 			tagLogger.Debug("Fetching manifest...")
 			mnfst, err := manifestService.Get(ctx, desc.Digest)
 			if err != nil {
+				if *debug {
+					tagLogger.WithError(err)
+				}
 				tagLogger.Error("Could not fetch manifest!")
 				continue
 			}
@@ -218,6 +224,9 @@ func main() {
 			tagLogger.Debug("Parsing manifest details...")
 			_, p, err := mnfst.Payload()
 			if err != nil {
+				if *debug {
+					tagLogger.WithError(err)
+				}
 				tagLogger.Error("Could not parse manifest detail!")
 				continue
 			}
@@ -228,6 +237,9 @@ func main() {
 			tagLogger.Debug("Fetching blob")
 			b, err := blobsService.Get(ctx, m.Manifest.Config.Digest)
 			if err != nil {
+				if *debug {
+					tagLogger.WithError(err)
+				}
 				tagLogger.Error("Could not fetch blob!")
 				continue
 			}
@@ -286,6 +298,9 @@ func main() {
 					} else {
 						err := tag.Delete()
 						if err != nil {
+							if *debug {
+								tagLogger.WithError(err)
+							}
 							tagLogger.Error("Could not delete image!")
 						}
 					}
