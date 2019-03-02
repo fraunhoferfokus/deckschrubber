@@ -13,18 +13,21 @@ import (
 
 	"fmt"
 	"os"
+	"reflect"
 
 	"regexp"
 
 	"crypto/tls"
 	"net/http"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
+	"github.com/docker/distribution/manifest/schema1"
 	schema2 "github.com/docker/distribution/manifest/schema2"
+
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
 	"github.com/heroku/docker-registry-client/registry"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -124,7 +127,7 @@ func main() {
 	wrapTransport := registry.WrapTransport(transport, *registryURL,
 		*username, *password)
 	// Create registry object
-	r, err := client.NewRegistry(ctx, *registryURL, wrapTransport)
+	r, err := client.NewRegistry(*registryURL, wrapTransport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
@@ -168,7 +171,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(ctx, repoName, *registryURL, wrapTransport)
+		repo, err := client.NewRepository(repoName, *registryURL, wrapTransport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
@@ -205,7 +208,7 @@ func main() {
 			desc, err := tagsService.Get(ctx, tag)
 			if err != nil {
 				if *debug {
-					tagLogger.WithError(err)
+					tagLogger = tagLogger.WithError(err)
 				}
 				tagLogger.Error("Could not fetch tag!")
 				continue
@@ -213,9 +216,10 @@ func main() {
 
 			tagLogger.Debug("Fetching manifest...")
 			mnfst, err := manifestService.Get(ctx, desc.Digest)
+			tagLogger = tagLogger.WithField("manifestType", reflect.TypeOf(mnfst))
 			if err != nil {
 				if *debug {
-					tagLogger.WithError(err)
+					tagLogger = tagLogger.WithError(err)
 				}
 				tagLogger.Error("Could not fetch manifest!")
 				continue
@@ -225,27 +229,37 @@ func main() {
 			_, p, err := mnfst.Payload()
 			if err != nil {
 				if *debug {
-					tagLogger.WithError(err)
+					tagLogger = tagLogger.WithError(err)
 				}
 				tagLogger.Error("Could not parse manifest detail!")
 				continue
 			}
-
-			m := new(schema2.DeserializedManifest)
-			m.UnmarshalJSON(p)
-
-			tagLogger.Debug("Fetching blob")
-			b, err := blobsService.Get(ctx, m.Manifest.Config.Digest)
-			if err != nil {
-				if *debug {
-					tagLogger.WithError(err)
+			var blobInfoBytes []byte
+			switch v := mnfst.(type) {
+			case *schema1.SignedManifest:
+				m := new(schema1.SignedManifest)
+				m.UnmarshalJSON(p)
+				history := m.Manifest.History[0].V1Compatibility
+				blobInfoBytes = []byte(history)
+			case *schema2.DeserializedManifest:
+				m := new(schema2.DeserializedManifest)
+				m.UnmarshalJSON(p)
+				digest := m.Manifest.Config.Digest
+				tagLogger.Debug("Fetching blob")
+				blobInfoBytes, err = blobsService.Get(ctx, digest)
+				if err != nil {
+					if *debug {
+						tagLogger = tagLogger.WithError(err)
+					}
+					tagLogger.Error("Could not fetch blob!")
+					continue
 				}
-				tagLogger.Error("Could not fetch blob!")
+			default:
+				tagLogger.Errorf("Unsupported manifest format: %s", v)
 				continue
 			}
-
 			var blobInfo BlobInfo
-			json.Unmarshal(b, &blobInfo)
+			json.Unmarshal(blobInfoBytes, &blobInfo)
 
 			images = append(images,
 				Image{entry, tag, desc.Digest.String(), blobInfo.Created,
@@ -299,7 +313,7 @@ func main() {
 						err := tag.Delete()
 						if err != nil {
 							if *debug {
-								tagLogger.WithError(err)
+								tagLogger = tagLogger.WithError(err)
 							}
 							tagLogger.Error("Could not delete image!")
 						}
