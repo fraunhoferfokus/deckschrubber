@@ -150,12 +150,14 @@ func main() {
 		blobsService := repo.Blobs(ctx)
 		manifestService, err := repo.Manifests(ctx)
 		if err != nil {
-			logger.Fatalf("Couldn't fetch manifest service! (err: %v)", err)
+			logger.Warnln("Couldn't fetch manifest service - not processing this repo (err: %v)", err)
+			continue
 		}
 
 		tagsData, err := tagsService.All(ctx)
 		if err != nil {
-			logger.Fatalf("Couldn't fetch tags! (err: %v)", err)
+			logger.Warnln("Couldn't fetch tags - not processing this repo (err: %v)", err)
+			continue
 		}
 
 		var tags []Image
