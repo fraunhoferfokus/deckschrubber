@@ -46,6 +46,8 @@ var (
 	insecure *bool
 	// Username and password
 	uname, passwd *string
+	// Frequency
+	frequencySeconds *int
 )
 
 const (
@@ -83,6 +85,8 @@ func init() {
 	// Username and password
 	uname = flag.String("user", "", "Username for authentication")
 	passwd = flag.String("password", "", "Password for authentication")
+	// frequency: repeat every X seconds
+	frequencySeconds = flag.Int("frequency", 0, "repeat the task every X seconds")
 }
 
 func main() {
@@ -116,6 +120,18 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	for {
+		doit()
+		if *frequencySeconds == 0 { // done
+			return
+		}
+		// sleep and repeat
+		log.Infof("Sleeping for %d seconds", *frequencySeconds)
+		time.Sleep(time.Duration(*frequencySeconds)*time.Second)
+	}
+}
+
+func doit() {
 	registryAuthTransport,err :=util.NewAuthTransport(*registryURL, nil, *uname, *passwd, *insecure)
 	if err != nil {
 		log.Fatal("Could not set up auth transport %v", err)

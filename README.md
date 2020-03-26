@@ -26,7 +26,9 @@ We run our own private registry on a server with limited storage and it was only
 -debug
       run in debug mode      
 -dry
-      does not actually deletes
+      does not actually delete
+-frequency
+      repeat the task every X seconds
 -insecure
       Skip TLS verification
 -latest int
@@ -95,4 +97,20 @@ $GOPATH/bin/deckschrubber -latest 3
 
 ```
 $GOPATH/bin/deckschrubber -tag ^.*-SNAPSHOT$ 
+```
+
+## Using docker image
+
+Example `docker-compose.yml`:
+
+```
+version: "3"
+services:
+  deckschrubber:
+    image: mobilejazz/deckschrubber:0.7.1
+    environment:
+     - REGISTRY=https://myregistry.example.com
+     - USER=admin
+     - PASSWORD=s00p3rs33cret
+     - FREQUENCY=86400 # 1 day in seconds
 ```
