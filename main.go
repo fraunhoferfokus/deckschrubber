@@ -127,12 +127,12 @@ func main() {
 		}
 		// sleep and repeat
 		log.Infof("Sleeping for %d seconds", *frequencySeconds)
-		time.Sleep(time.Duration(*frequencySeconds)*time.Second)
+		time.Sleep(time.Duration(*frequencySeconds) * time.Second)
 	}
 }
 
 func doit() {
-	registryAuthTransport,err :=util.NewAuthTransport(*registryURL, nil, *uname, *passwd, *insecure)
+	registryAuthTransport, err := util.NewAuthTransport(*registryURL, nil, *uname, *passwd, *insecure)
 	if err != nil {
 		log.Fatal("Could not set up auth transport %v", err)
 	}
@@ -180,7 +180,7 @@ func doit() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repositoryAuthTransport,err :=util.NewAuthTransport(*registryURL, &entry, *uname, *passwd, *insecure)
+		repositoryAuthTransport, err := util.NewAuthTransport(*registryURL, &entry, *uname, *passwd, *insecure)
 		if err != nil {
 			logger.Fatalf("Could not set up auth transport %v", err)
 		}
