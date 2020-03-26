@@ -182,7 +182,7 @@ func doit() {
 
 		repositoryAuthTransport,err :=util.NewAuthTransport(*registryURL, &entry, *uname, *passwd, *insecure)
 		if err != nil {
-			log.Fatal("Could not set up auth transport %v", err)
+			logger.Fatalf("Could not set up auth transport %v", err)
 		}
 		repo, err := client.NewRepository(repoName, *registryURL, repositoryAuthTransport)
 		if err != nil {
