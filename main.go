@@ -84,10 +84,10 @@ func init() {
 	// Shows version
 	ver = flag.Bool("v", false, "shows version and quits")
 	// Skip insecure TLS
-	insecure = flag.Bool("insecure", false, "Skip insecure TLS verification")
+	insecure = flag.Bool("insecure", false, "Skip TLS verification")
 	// Username and password
-	uname = flag.String("user", "", "Username for basic authentication")
-	passwd = flag.String("password", "", "Password for basic authentication")
+	uname = flag.String("user", "", "Username for authentication")
+	passwd = flag.String("password", "", "Password for authentication")
 }
 
 func main() {

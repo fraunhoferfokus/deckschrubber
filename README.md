@@ -27,10 +27,14 @@ We run our own private registry on a server with limited storage and it was only
       run in debug mode      
 -dry
       does not actually deletes
+-insecure
+      Skip TLS verification
 -latest int
       number of the latest matching images of an repository that won't be deleted (default 1)      
 -month int
       max age in months
+-password string
+      password for authentication
 -registry string
       URL of registry (default "http://localhost:5000")
 -repo string
@@ -39,6 +43,8 @@ We run our own private registry on a server with limited storage and it was only
       number of repositories to garbage collect (default 5)
 -tag string
       matching tags (allows regexp) (default ".*")      
+-user string
+      username for authentication
 -ntag string
       match everything but this tag (allows regexp) (default empty)
 -v    shows version and quits
