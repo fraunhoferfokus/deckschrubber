@@ -1,28 +1,23 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"golang.org/x/crypto/ssh/terminal"
+	"io"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
 
-	"encoding/json"
-
-	"flag"
-
-	"io"
-
-	"fmt"
-	"os"
-
-	"regexp"
-
 	"github.com/docker/distribution/context"
-	schema2 "github.com/docker/distribution/manifest/schema2"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
 	"github.com/fraunhoferfokus/deckschrubber/util"
+	"github.com/namsral/flag"
 	log "github.com/sirupsen/logrus"
 )
 
