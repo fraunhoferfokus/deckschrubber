@@ -1,6 +1,7 @@
 package main
 
 import (
+	"golang.org/x/crypto/ssh/terminal"
 	"sort"
 	"strings"
 	"syscall"
@@ -17,14 +18,12 @@ import (
 
 	"regexp"
 
-	"golang.org/x/crypto/ssh/terminal"
-
-	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
 	"github.com/fraunhoferfokus/deckschrubber/util"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -122,10 +121,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	basicAuthTransport := util.NewBasicAuthTransport(*registryURL, *uname, *passwd, *insecure)
+	registryAuthTransport,err :=util.NewAuthTransport(*registryURL, nil, *uname, *passwd, *insecure)
+	if err != nil {
+		log.Fatal("Could not set up auth transport %v", err)
+	}
 
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, basicAuthTransport)
+	r, err := client.NewRegistry(*registryURL, registryAuthTransport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
@@ -167,7 +169,11 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, basicAuthTransport)
+		repositoryAuthTransport,err :=util.NewAuthTransport(*registryURL, &entry, *uname, *passwd, *insecure)
+		if err != nil {
+			log.Fatal("Could not set up auth transport %v", err)
+		}
+		repo, err := client.NewRepository(repoName, *registryURL, repositoryAuthTransport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
