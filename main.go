@@ -143,7 +143,7 @@ func main() {
 	if err != nil && err != io.EOF {
 		log.Fatalf("Error while fetching repositories! (err: %v)", err)
 	}
-	log.WithFields(log.Fields{"count": numFilled, "entries": entries}).Info("Successfully fetched repositories.")
+	log.WithFields(log.Fields{"count": numFilled, "entries": entries[:numFilled]}).Info("Successfully fetched repositories.")
 
 	// Deadline defines the youngest creation date for an image
 	// to be considered for deletion
