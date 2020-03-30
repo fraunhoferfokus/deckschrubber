@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
