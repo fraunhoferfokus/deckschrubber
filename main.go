@@ -17,6 +17,9 @@ import (
 
 	"regexp"
 
+	"crypto/tls"
+	"net/http"
+
 	"golang.org/x/crypto/ssh/terminal"
 
 	log "github.com/sirupsen/logrus"
@@ -24,7 +27,7 @@ import (
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
-	"github.com/fraunhoferfokus/deckschrubber/util"
+	"github.com/heroku/docker-registry-client/registry"
 )
 
 var (
@@ -122,10 +125,19 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	basicAuthTransport := util.NewBasicAuthTransport(*registryURL, *uname, *passwd, *insecure)
+	transport := http.DefaultTransport
+	if *insecure {
+	    transport = &http.Transport{
+	        TLSClientConfig: &tls.Config{
+	            InsecureSkipVerify: true,
+	        },
+	    }
+	}
+	wrapTransport := registry.WrapTransport(transport, *registryURL, *uname, *passwd)
 
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, basicAuthTransport)
+	r, err := client.NewRegistry(*registryURL, wrapTransport)
+
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
@@ -167,7 +179,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, basicAuthTransport)
+		repo, err := client.NewRepository(repoName, *registryURL, wrapTransport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
