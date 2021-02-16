@@ -93,6 +93,10 @@ func init() {
 
 func main() {
 	flag.Parse()
+	
+	if len(os.Args) <= 1 {
+		flag.Usage()
+	}
 
 	// Compile regular expressions
 	repoRegexp = regexp.MustCompile(*repoRegexpStr)
