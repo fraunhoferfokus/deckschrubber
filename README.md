@@ -44,7 +44,10 @@ We run our own private registry on a server with limited storage and it was only
 -v    shows version and quits
 -year int
       max age in days
-      
+-user
+      Username for basic authentication
+-password
+      Password for basic authentication
       
 ```
 
@@ -58,6 +61,8 @@ delete:
 ```
 
 See [the documentation](https://github.com/docker/distribution/blob/master/docs/configuration.md#delete) for details. 
+
+You might have to garbage collect to actually free disk space after using deckschrubber See [the documentation for garbage-collect](https://docs.docker.com/registry/garbage-collection/) for details.
 
 ## Examples
 
