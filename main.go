@@ -1,12 +1,15 @@
 package main
 
 import (
+	"crypto/tls"
+	"net/http"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"encoding/json"
+	"net/url"
 
 	"flag"
 
@@ -19,12 +22,15 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
+	"github.com/docker/distribution/registry/client/auth"
+	"github.com/docker/distribution/registry/client/auth/challenge"
+	"github.com/docker/distribution/registry/client/transport"
 	"github.com/fraunhoferfokus/deckschrubber/util"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -52,6 +58,9 @@ var (
 	insecure *bool
 	// Username and password
 	uname, passwd *string
+
+	// Credential store
+	cstore util.CStore
 )
 
 const (
@@ -93,7 +102,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	
+
 	if len(os.Args) <= 1 {
 		flag.Usage()
 		return
@@ -115,6 +124,13 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	// Parse and verify registry URL
+	regParsedURL, err := url.Parse(*registryURL)
+	if err != nil {
+		log.Fatalf("Could not parse registry URL! (error: %v)", err)
+		os.Exit(1)
+	}
+
 	// Add basic auth if user/pass is provided
 	if *uname != "" && *passwd == "" {
 		fmt.Println("Password:")
@@ -127,10 +143,67 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	basicAuthTransport := util.NewBasicAuthTransport(*registryURL, *uname, *passwd, *insecure)
+	cstore.SetBasic(*uname, *passwd)
+
+	baseTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecure},
+	}
+
+	// API Check:
+	// depending on what the endpoint answers, we might need to do some extra
+	// steps for authentication (i.e., parse header, query endpoint, etc).
+	// see: https://docs.docker.com/registry/spec/api/
+	// Code snippets are taken from:
+	// https://github.com/distribution/distribution/blob/ad8f5caba068b2d4b83ba5a1c3e9d74e1da2c16e/registry/client/auth/session.go#L74-L87
+	log.Debug("Trying to fetch auth challenges")
+	pingPath := regParsedURL.Path
+	if v2Root := strings.Index(regParsedURL.Path, "/v2/"); v2Root != -1 {
+		pingPath = pingPath[:v2Root+4]
+	} else if v1Root := strings.Index(regParsedURL.Path, "/v1/"); v1Root != -1 {
+		pingPath = pingPath[:v1Root] + "/v2/"
+	} else {
+		log.Warning("Could not figure out ping path (defaulting to '/v2/')")
+		pingPath = "/v2/"
+	}
+	ping := url.URL{
+		Host:   regParsedURL.Host,
+		Scheme: regParsedURL.Scheme,
+		Path:   pingPath,
+	}
+	log.Debugf("Ping path is '%s'", ping.String())
+
+	manager := challenge.NewSimpleManager()
+	httpClient := &http.Client{Transport: baseTransport}
+	res, err := httpClient.Get(ping.String())
+	if err != nil {
+		log.Warningf("Could not query API for auth challenges! (err: %v)", err)
+	}
+	manager.AddResponse(res)
+
+	// Prepare handlers for both token-based and basic authentication
+	// @TODO: I'm not finding proper documentation for the scopes!
+	tokenHandler := auth.NewTokenHandlerWithOptions(auth.TokenHandlerOptions{
+		Transport:   baseTransport,
+		Credentials: &cstore,
+		ClientID:    "deckschrubber",
+		Scopes: []auth.Scope{
+			auth.RegistryScope{
+				Name:    "catalog",
+				Actions: []string{"*"},
+			},
+			auth.RepositoryScope{
+				Repository: "*",
+				// Actions:    []string{"push", "pull"}, <- is this platform dependent? (e.g., GitLab vs Docker Hub)
+				Actions: nil,
+			},
+		},
+		Logger: log.New(),
+	})
+	basicHandler := auth.NewBasicHandler(&cstore)
+	transport := transport.NewTransport(baseTransport, auth.NewAuthorizer(manager, tokenHandler, basicHandler))
 
 	// Create registry object
-	r, err := client.NewRegistry(*registryURL, basicAuthTransport)
+	r, err := client.NewRegistry(*registryURL, transport)
 	if err != nil {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
@@ -172,7 +245,7 @@ func main() {
 			logger.Fatalf("Could not parse repo from name! (err: %v)", err)
 		}
 
-		repo, err := client.NewRepository(repoName, *registryURL, basicAuthTransport)
+		repo, err := client.NewRepository(repoName, *registryURL, transport)
 		if err != nil {
 			logger.WithFields(log.Fields{"entry": entry}).Fatalf("Could not create repo from name! (err: %v)", err)
 		}
