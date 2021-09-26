@@ -1,4 +1,9 @@
 # CHANGELOG
+* `0.7.0`:
+  * Fix logrus issue (name case)
+  * Strucured as Go module
+  * Add compact logged list of fetched repos
+  * Friendlier API (usage on no args!)
 * `0.6.0`: Add basic authentication
 * `0.5.0`: Add `ntag` flag to match "everything but this" tags
 * `0.4.0`:

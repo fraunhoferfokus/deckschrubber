@@ -55,7 +55,7 @@ var (
 )
 
 const (
-	version string = "0.6.0"
+	version string = "0.7.0"
 )
 
 func init() {
@@ -93,7 +93,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	
+
 	if len(os.Args) <= 1 {
 		flag.Usage()
 		return
