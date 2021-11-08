@@ -32,7 +32,7 @@ var (
 	// Base URL of registry
 	registryURL *string
 	// Regexps for filtering repositories and tags
-	repoRegexpStr, tagRegexpStr, negTagRegexpStr *string
+	repoRegexpStr, negRepoRegexpStr, tagRegexpStr, negTagRegexpStr *string
 	// Maximum age of image to consider for deletion
 	day, month, year *int
 	// Max number of repositories to be fetched from registry
@@ -47,7 +47,7 @@ var (
 	ver *bool
 
 	// Compiled regexps
-	repoRegexp, tagRegexp, negTagRegexp *regexp.Regexp
+	repoRegexp, negRepoRegexp, tagRegexp, negTagRegexp *regexp.Regexp
 	// Skip insecure TLS
 	insecure *bool
 	// Username and password
@@ -72,6 +72,8 @@ func init() {
 	year = flag.Int("year", 0, "max age in days")
 	// Regexp for images (default = .*)
 	repoRegexpStr = flag.String("repo", ".*", "matching repositories (allows regexp)")
+	// Negative regexp for images (default = empty)
+	negRepoRegexpStr = flag.String("nrepo", "", "matching repositories (allows regexp)")
 	// Regexp for tags (default = .*)
 	tagRegexpStr = flag.String("tag", ".*", "matching tags (allows regexp)")
 	// Negative regexp for tags (default = empty)
@@ -101,6 +103,9 @@ func main() {
 
 	// Compile regular expressions
 	repoRegexp = regexp.MustCompile(*repoRegexpStr)
+	if *negRepoRegexpStr != "" {
+		negRepoRegexp = regexp.MustCompile(*negRepoRegexpStr)
+	}
 	tagRegexp = regexp.MustCompile(*tagRegexpStr)
 	if *negTagRegexpStr != "" {
 		negTagRegexp = regexp.MustCompile(*negTagRegexpStr)
@@ -163,6 +168,15 @@ func main() {
 		if !matched {
 			logger.WithFields(log.Fields{"entry": entry}).Debug("Ignore non matching repository (-repo=", *repoRegexpStr, ")")
 			continue
+		}
+
+		// Check for the negative regexp for repos as well.
+		if negRepoRegexp != nil {
+			negRepoMatch := negRepoRegexp.MatchString(entry)
+			if negRepoMatch {
+				logger.WithFields(log.Fields{"entry": entry}).Debug("Ignore excluded repository (-nrepo=", *negRepoRegexpStr, ")")
+				continue
+			}
 		}
 
 		// Establish repository object in registry
