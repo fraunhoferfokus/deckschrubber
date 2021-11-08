@@ -35,6 +35,8 @@ We run our own private registry on a server with limited storage and it was only
       URL of registry (default "http://localhost:5000")
 -repo string
       matching repositories (allows regexp) (default ".*")      
+-nrepo string
+      matching everything but this repo (allows regexp) (default empty)          
 -repos int
       number of repositories to garbage collect (default 5)
 -tag string
