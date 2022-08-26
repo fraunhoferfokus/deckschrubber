@@ -25,6 +25,7 @@ func (t *BasicAuthTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 func NewBasicAuthTransport(URL string, uname string, passwd string, insecure bool) *BasicAuthTransport {
 	baseTransport := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecure},
 	}
 
