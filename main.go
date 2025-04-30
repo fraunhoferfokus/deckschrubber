@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"syscall"
@@ -19,12 +20,11 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
 	"github.com/fraunhoferfokus/deckschrubber/util"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -135,27 +135,19 @@ func main() {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
 
+	ctx := context.Background()
+
 	// List of all repositories fetched from the registry. The number
 	// of fetched repositories depends on the number provided by the
 	// user ('-repos' flag)
-	entries := make([]string, *repoCount)
-
-	// Empty context for all requests in sequel
-	ctx := context.Background()
-
-	// Fetch all repositories from the registry
-	numFilled, err := r.Repositories(ctx, entries, "")
-	if err != nil && err != io.EOF {
-		log.Fatalf("Error while fetching repositories! (err: %v)", err)
-	}
-	log.WithFields(log.Fields{"count": numFilled, "entries": entries[:numFilled]}).Info("Successfully fetched repositories.")
+	entries := getRepositories(ctx, r)
 
 	// Deadline defines the youngest creation date for an image
 	// to be considered for deletion
 	deadline := time.Now().AddDate(*year/-1, *month/-1, *day/-1)
 
 	// Fetch information about images belonging to each repository
-	for _, entry := range entries[:numFilled] {
+	for _, entry := range entries {
 		logger := log.WithField("repo", entry)
 
 		matched := repoRegexp.MatchString(entry)
@@ -352,4 +344,32 @@ func main() {
 		}
 
 	}
+}
+
+func getRepositories(ctx context.Context, r client.Registry) []string {
+	var allEntries []string
+	var last string
+	const pageSize = 100
+
+	for {
+		entries := make([]string, pageSize)
+		n, err := r.Repositories(ctx, entries, last)
+		if err != nil && err != io.EOF {
+			log.Fatalf("Error while fetching repositories! (err: %v)", err)
+		}
+
+		log.WithFields(log.Fields{"count": n}).Info("Fetched a page of repositories.")
+		allEntries = append(allEntries, entries[:n]...)
+
+		// If we received less than pageSize or reached EOF, we're done
+		if err == io.EOF || n < pageSize {
+			break
+		}
+
+		// Set last for the next page
+		last = entries[n-1]
+	}
+
+	log.WithFields(log.Fields{"count": len(allEntries), "entries": allEntries}).Info("Successfully fetched repositories.")
+	return allEntries
 }
