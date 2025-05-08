@@ -60,8 +60,8 @@ const (
 
 func init() {
 	/** CLI flags */
-	// Max number of repositories to fetch from registry (default = 5)
-	repoCount = flag.Int("repos", 5, "number of repositories to garbage collect")
+	// Max number of repositories to fetch from registry (obsolete, kept for backward compatibility with existing scripts)
+	repoCount = flag.Int("repos", 0, "number of repositories to garbage collect (ignored, kept for backward compatibility)")
 	// Base URL of registry (default = http://localhost:5000)
 	registryURL = flag.String("registry", "http://localhost:5000", "URL of registry")
 	// Maximum age of iamges to consider for deletion in days (default = 0)
@@ -113,6 +113,10 @@ func main() {
 
 	if *debug {
 		log.SetLevel(log.DebugLevel)
+	}
+
+	if *repoCount != 0 {
+		log.Warn("Option -repos is obsolete, ignored")
 	}
 
 	// Add basic auth if user/pass is provided
