@@ -1,4 +1,8 @@
 # CHANGELOG
+* `0.8.0`:
+  * Update dependencies
+  * Add pagination (thanks to [@aoresnik](https://github.com/aoresnik))
+  * Update README
 * `0.7.0`:
   * Fix logrus issue (name case)
   * Strucured as Go module
