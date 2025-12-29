@@ -22,30 +22,38 @@ We run our own private registry on a server with limited storage and it was only
 ## Arguments
 ```
 -day int
-      max age in days
+  max age in days
 -debug
-      run in debug mode      
+  run in debug mode
 -dry
-      does not actually deletes
+  does not actually deletes
+-insecure
+  Skip insecure TLS verification
 -latest int
-      number of the latest matching images of an repository that won't be deleted (default 1)      
+  number of the latest matching images of an repository that won't be deleted (default 1)
 -month int
-      max age in months
--registry string
-      URL of registry (default "http://localhost:5000")
--repo string
-      matching repositories (allows regexp) (default ".*")      
--repos int
-      number of repositories to garbage collect (default 5)
--tag string
-      matching tags (allows regexp) (default ".*")      
+  max age in months
 -ntag string
-      match everything but this tag (allows regexp) (default empty)
+  non matching tags (allows regexp)
+-page-size int
+  Number of entries to fetch upon each request (default = 100) (default 100)
+-paginate
+  Set to use pagination when fetching repositories (default = false)
+-password string
+  Password for basic authentication
+-registry string
+  URL of registry (default "http://localhost:5000")
+-repo string
+  matching repositories (allows regexp) (default ".*")
+-repos int
+  number of repositories to garbage collect (before filtering, lexographically sorted by server) (default 5)
+-tag string
+  matching tags (allows regexp) (default ".*")
+-user string
+  Username for basic authentication
 -v    shows version and quits
 -year int
-      max age in days
-      
-      
+  max age in days
 ```
 
 ## Registry preparation
@@ -57,7 +65,7 @@ delete:
   enabled: true
 ```
 
-See [the documentation](https://github.com/docker/distribution/blob/master/docs/configuration.md#delete) for details. 
+See [the documentation](https://distribution.github.io/distribution/about/configuration/#delete) for details.
 
 ## Examples
 
@@ -90,3 +98,11 @@ $GOPATH/bin/deckschrubber -latest 3
 ```
 $GOPATH/bin/deckschrubber -tag ^.*-SNAPSHOT$ 
 ```
+
+* **Use pagination when querying server**
+
+```
+$GOPATH/bin/deckschrubber -paginate -page-size 50 -repos 150
+```
+
+*Note* that `-paginate` must be present for `-page-size` to have an effect. If pagination is enabled, `-repos` should be larger than `-page-size`, otherwise it has the same effect as without pagination.
