@@ -2,9 +2,9 @@
 > *n. person responsible for scrubbing a ship's deck.*
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/fraunhoferfokus/deckschrubber)](https://goreportcard.com/report/github.com/fraunhoferfokus/deckschrubber)
-[![License](https://img.shields.io/github/license/fraunhoferfokus/sesame.svg)](https://github.com/fraunhoferfokus/sesame/blob/master/LICENSE)
+[![License](https://img.shields.io/github/license/fraunhoferfokus/deckschrubber)](https://github.com/fraunhoferfokus/deckschrubber/blob/master/LICENSE)
 
-Deckschrubber inspects images of a [Docker Registry](https://docs.docker.com/registry/) and removes those older than a given age.
+Deckschrubber inspects images of a [Container Registry](https://distribution.github.io/distribution/) and removes those older than a given age.
 
 ## Quick Start
 
