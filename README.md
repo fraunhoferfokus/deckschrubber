@@ -56,6 +56,9 @@ We run our own private registry on a server with limited storage and it was only
   max age in days
 ```
 
+## Proxy
+To access the target registry via proxy, set proxy environment variable(s) as described by Golang's [net/http package](https://pkg.go.dev/net/http#ProxyFromEnvironment).
+
 ## Registry preparation
 Deckschrubber uses the Docker Registry API. 
 Its delete endpoint is disabled by default, you have to enable it with the following entry in the registry configuration file: 
