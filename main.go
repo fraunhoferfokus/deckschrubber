@@ -1,30 +1,24 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
 
-	"encoding/json"
-
-	"flag"
-
-	"io"
-
-	"fmt"
-	"os"
-
-	"regexp"
-
-	"golang.org/x/crypto/ssh/terminal"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/distribution/reference"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
-	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client"
 	"github.com/fraunhoferfokus/deckschrubber/util"
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/term"
 )
 
 var (
@@ -52,16 +46,19 @@ var (
 	insecure *bool
 	// Username and password
 	uname, passwd *string
+	// Paging options
+	paginate *bool
+	pageSize *int
 )
 
 const (
-	version string = "0.7.0"
+	version string = "0.8.0"
 )
 
 func init() {
 	/** CLI flags */
 	// Max number of repositories to fetch from registry (default = 5)
-	repoCount = flag.Int("repos", 5, "number of repositories to garbage collect")
+	repoCount = flag.Int("repos", 5, "number of repositories to garbage collect (before filtering, lexographically sorted by server)")
 	// Base URL of registry (default = http://localhost:5000)
 	registryURL = flag.String("registry", "http://localhost:5000", "URL of registry")
 	// Maximum age of iamges to consider for deletion in days (default = 0)
@@ -89,6 +86,9 @@ func init() {
 	// Username and password
 	uname = flag.String("user", "", "Username for basic authentication")
 	passwd = flag.String("password", "", "Password for basic authentication")
+	// Paging options
+	paginate = flag.Bool("paginate", false, "Set to use pagination when fetching repositories (default = false)")
+	pageSize = flag.Int("page-size", 100, "Number of entries to fetch upon each request (default = 100)")
 }
 
 func main() {
@@ -118,7 +118,7 @@ func main() {
 	// Add basic auth if user/pass is provided
 	if *uname != "" && *passwd == "" {
 		fmt.Println("Password:")
-		bytePassword, err := terminal.ReadPassword(int(syscall.Stdin))
+		bytePassword, err := term.ReadPassword(int(syscall.Stdin))
 		if err == nil {
 			stringPassword := string(bytePassword[:])
 			passwd = &stringPassword
@@ -135,27 +135,53 @@ func main() {
 		log.Fatalf("Could not create registry object! (err: %s", err)
 	}
 
-	// List of all repositories fetched from the registry. The number
-	// of fetched repositories depends on the number provided by the
-	// user ('-repos' flag)
-	entries := make([]string, *repoCount)
-
-	// Empty context for all requests in sequel
 	ctx := context.Background()
 
-	// Fetch all repositories from the registry
-	numFilled, err := r.Repositories(ctx, entries, "")
-	if err != nil && err != io.EOF {
-		log.Fatalf("Error while fetching repositories! (err: %v)", err)
+	// List of all repositories fetched from the registry. The number
+	// of fetched repositories depends on the number provided by the
+	// user ('-repos' flag) and pagination settings
+	windowSize := *repoCount
+	if *paginate {
+		if *repoCount > *pageSize {
+			windowSize = *pageSize
+		} else {
+			log.Warnf("Pagination enabled but page size is larger than repo count ('-repo' %d < %d '-page-size)", *repoCount, *pageSize)
+		}
 	}
-	log.WithFields(log.Fields{"count": numFilled, "entries": entries[:numFilled]}).Info("Successfully fetched repositories.")
+	var entries []string
+	// Empty string denotes that the query is being made for the first
+	// time, so the server starts with the first set of repositories
+	// (sorted lexigraphically)
+	var last string
+	for {
+		// The size of 'es' determines the number of repositories
+		// that are being queried by us
+		es := make([]string, windowSize)
+		n, err := r.Repositories(ctx, entries, last)
+		if err != nil && err != io.EOF {
+			log.Fatalf("Error while fetching repositories! (err: %v)", err)
+		}
+
+		log.WithFields(log.Fields{"count": n, "entries": entries[:n]}).Info("Successfully fetched repositories.")
+		entries = append(entries, es[:n]...)
+
+		// Stop the query if:
+		// - there are no more records to fetch
+		// - we already have more than requested entries
+		if err == io.EOF || len(entries) >= *repoCount {
+			break
+		}
+
+		// Set last for the next page
+		last = entries[n-1]
+	}
 
 	// Deadline defines the youngest creation date for an image
 	// to be considered for deletion
 	deadline := time.Now().AddDate(*year/-1, *month/-1, *day/-1)
 
 	// Fetch information about images belonging to each repository
-	for _, entry := range entries[:numFilled] {
+	for _, entry := range entries {
 		logger := log.WithField("repo", entry)
 
 		matched := repoRegexp.MatchString(entry)
