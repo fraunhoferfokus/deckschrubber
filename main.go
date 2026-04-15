@@ -362,17 +362,11 @@ func main() {
 			}
 		}
 
-		deletionOrder := make([]int, 0, len(deletableTags))
-		for tagIndex := range deletableTags {
-			deletionOrder = append(deletionOrder, tagIndex)
-		}
-
 		digestsDeleted := make(map[string]bool)
 
 		// Phase 1: shared digests first. Retag outdated tags to disposable
 		// digests and delete those disposable digests.
-		for _, tagIndex := range deletionOrder {
-			tag := deletableTags[tagIndex]
+		for _, tag := range deletableTags {
 			digest := tag.Descriptor.Digest.String()
 
 			if digestsDeleted[digest] {
@@ -428,8 +422,7 @@ func main() {
 		}
 
 		// Phase 2: non-shared digests. Delete digest directly.
-		for _, tagIndex := range deletionOrder {
-			tag := deletableTags[tagIndex]
+		for _, tag := range deletableTags {
 			digest := tag.Descriptor.Digest.String()
 
 			if digestsDeleted[digest] {
