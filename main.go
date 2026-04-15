@@ -367,11 +367,6 @@ func main() {
 			deletionOrder = append(deletionOrder, tagIndex)
 		}
 
-		replacementDigestOrder := make([]string, 0, len(replacementDigests))
-		for digest := range replacementDigests {
-			replacementDigestOrder = append(replacementDigestOrder, digest)
-		}
-
 		digestsDeleted := make(map[string]bool)
 
 		// Phase 1: shared digests first. Retag outdated tags to disposable
@@ -391,23 +386,27 @@ func main() {
 				continue
 			}
 
-			replacementFound := false
+			var replacementDigest string
 			var replacementTag Image
-			for _, replacementDigest := range replacementDigestOrder {
-				candidateTag := replacementDigests[replacementDigest]
-				if replacementDigest != digest && !digestsDeleted[replacementDigest] {
+			for candidateDigest, candidateTag := range replacementDigests {
+				if candidateDigest != digest {
+					replacementDigest = candidateDigest
 					replacementTag = candidateTag
-					replacementFound = true
 					break
 				}
 			}
 
-			if !replacementFound {
+			if replacementDigest == "" {
 				logger.WithField("tag", tag.Tag).WithField("alsoUsedByTags", nonDeletableTagsForDigest).Info("The underlying image is also used by non-deletable tags and no disposable replacement digest is available - skipping deletion")
 				continue
 			}
 
-			logger.WithField("tag", tag.Tag).WithField("sharedDigest", digest).WithField("alsoUsedByTags", nonDeletableTagsForDigest).WithField("replacementDigest", replacementTag.Descriptor.Digest.String()).Info("Digest is shared with non-deletable tags - retagging to disposable digest for safe untag")
+			logger.
+				WithField("tag", tag.Tag).
+				WithField("sharedDigest", digest).
+				WithField("alsoUsedByTags", nonDeletableTagsForDigest).
+				WithField("replacementDigest", replacementTag.Descriptor.Digest.String()).
+				Info("Digest is shared with non-deletable tags - retagging to disposable digest for safe untag")
 
 			if *dry {
 				logger.WithField("tag", tag.Tag).WithField("replacementDigest", replacementTag.Descriptor.Digest.String()).Infof("Not actually retagging/deleting digest (-dry=%v)", *dry)
@@ -424,7 +423,8 @@ func main() {
 				continue
 			}
 
-			digestsDeleted[replacementTag.Descriptor.Digest.String()] = true
+			delete(replacementDigests, replacementDigest)
+			digestsDeleted[replacementDigest] = true
 		}
 
 		// Phase 2: non-shared digests. Delete digest directly.
