@@ -366,13 +366,11 @@ func main() {
 		for tagIndex := range deletableTags {
 			deletionOrder = append(deletionOrder, tagIndex)
 		}
-		sort.Ints(deletionOrder)
 
 		replacementDigestOrder := make([]string, 0, len(replacementDigests))
 		for digest := range replacementDigests {
 			replacementDigestOrder = append(replacementDigestOrder, digest)
 		}
-		sort.Strings(replacementDigestOrder)
 
 		digestsDeleted := make(map[string]bool)
 
