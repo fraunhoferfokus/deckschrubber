@@ -362,28 +362,32 @@ func main() {
 			}
 		}
 
+		deletionOrder := make([]int, 0, len(deletableTags))
+		for tagIndex := range deletableTags {
+			deletionOrder = append(deletionOrder, tagIndex)
+		}
+		sort.Ints(deletionOrder)
+
+		replacementDigestOrder := make([]string, 0, len(replacementDigests))
+		for digest := range replacementDigests {
+			replacementDigestOrder = append(replacementDigestOrder, digest)
+		}
+		sort.Strings(replacementDigestOrder)
+
 		digestsDeleted := make(map[string]bool)
-		for _, tag := range deletableTags {
+
+		// Phase 1: shared digests first. Retag outdated tags to disposable
+		// digests and delete those disposable digests.
+		for _, tagIndex := range deletionOrder {
+			tag := deletableTags[tagIndex]
 			digest := tag.Descriptor.Digest.String()
 			if !digestsDeleted[digest] {
 				nonDeletableTagsForDigest, hasNonDeletableTags := nonDeletableDigests[digest]
-				if !hasNonDeletableTags {
-					logger.WithField("tag", tag.Tag).Info("All tags for this image digest marked for deletion")
-					if !*dry {
-						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Descriptor.Digest).Infof("Deleting image (-dry=%v)", *dry)
-						err := manifestService.Delete(ctx, tag.Descriptor.Digest)
-						if err == nil {
-							digestsDeleted[digest] = true
-						} else {
-							logger.WithField("tag", tag.Tag).WithField("err", err).Error("Could not delete image!")
-						}
-					} else {
-						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Not actually deleting image (-dry=%v)", *dry)
-					}
-				} else {
+				if hasNonDeletableTags {
 					replacementFound := false
 					var replacementTag Image
-					for replacementDigest, candidateTag := range replacementDigests {
+					for _, replacementDigest := range replacementDigestOrder {
+						candidateTag := replacementDigests[replacementDigest]
 						if replacementDigest != digest && !digestsDeleted[replacementDigest] {
 							replacementTag = candidateTag
 							replacementFound = true
@@ -414,9 +418,39 @@ func main() {
 					}
 
 					digestsDeleted[replacementTag.Descriptor.Digest.String()] = true
+				} else {
+					logger.WithField("tag", tag.Tag).Debug("Digest is not shared - defer direct deletion to phase 2")
 				}
 			} else {
 				logger.WithField("tag", tag.Tag).Debug("Image under tag already deleted")
+			}
+		}
+
+		// Phase 2: non-shared digests. Delete digest directly.
+		for _, tagIndex := range deletionOrder {
+			tag := deletableTags[tagIndex]
+			digest := tag.Descriptor.Digest.String()
+			if digestsDeleted[digest] {
+				logger.WithField("tag", tag.Tag).Debug("Image under tag already deleted")
+				continue
+			}
+
+			if _, hasNonDeletableTags := nonDeletableDigests[digest]; hasNonDeletableTags {
+				logger.WithField("tag", tag.Tag).Debug("Digest is shared - already handled in phase 1")
+				continue
+			}
+
+			logger.WithField("tag", tag.Tag).Info("All tags for this image digest marked for deletion")
+			if !*dry {
+				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Descriptor.Digest).Infof("Deleting image (-dry=%v)", *dry)
+				err := manifestService.Delete(ctx, tag.Descriptor.Digest)
+				if err == nil {
+					digestsDeleted[digest] = true
+				} else {
+					logger.WithField("tag", tag.Tag).WithField("err", err).Error("Could not delete image!")
+				}
+			} else {
+				logger.WithField("tag", tag.Tag).WithField("time", tag.Time).Infof("Not actually deleting image (-dry=%v)", *dry)
 			}
 		}
 
