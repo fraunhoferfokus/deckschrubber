@@ -346,17 +346,18 @@ func main() {
 		// delete that disposable digest.
 		nonDeletableDigests := make(map[string]string)
 		for _, tag := range nonDeletableTags {
-			if nonDeletableDigests[tag.Descriptor.Digest.String()] == "" {
-				nonDeletableDigests[tag.Descriptor.Digest.String()] = tag.Tag
+			digest := tag.Descriptor.Digest.String()
+			if existingTags, exists := nonDeletableDigests[digest]; !exists {
+				nonDeletableDigests[digest] = tag.Tag
 			} else {
-				nonDeletableDigests[tag.Descriptor.Digest.String()] = nonDeletableDigests[tag.Descriptor.Digest.String()] + ", " + tag.Tag
+				nonDeletableDigests[digest] = existingTags + ", " + tag.Tag
 			}
 		}
 
 		replacementDigests := make(map[string]Image)
 		for _, tag := range deletableTags {
 			digest := tag.Descriptor.Digest.String()
-			if nonDeletableDigests[digest] == "" {
+			if _, exists := nonDeletableDigests[digest]; !exists {
 				replacementDigests[digest] = tag
 			}
 		}
@@ -365,8 +366,8 @@ func main() {
 		for _, tag := range deletableTags {
 			digest := tag.Descriptor.Digest.String()
 			if !digestsDeleted[digest] {
-				nonDeletableTagsForDigest := nonDeletableDigests[digest]
-				if nonDeletableTagsForDigest == "" {
+				nonDeletableTagsForDigest, hasNonDeletableTags := nonDeletableDigests[digest]
+				if !hasNonDeletableTags {
 					logger.WithField("tag", tag.Tag).Info("All tags for this image digest marked for deletion")
 					if !*dry {
 						logger.WithField("tag", tag.Tag).WithField("time", tag.Time).WithField("digest", tag.Descriptor.Digest).Infof("Deleting image (-dry=%v)", *dry)
