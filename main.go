@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/distribution/reference"
+	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
 	schema2 "github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/registry/client"
@@ -407,7 +408,16 @@ func main() {
 				continue
 			}
 
-			if err := tagsService.Tag(ctx, tag.Tag, replacementTag.Descriptor); err != nil {
+			// TagService.Tag() is not implemented in the client library,
+			// so we retag by fetching the replacement manifest and pushing
+			// it under the target tag name via ManifestService.Put().
+			replacementManifest, err := manifestService.Get(ctx, replacementTag.Descriptor.Digest)
+			if err != nil {
+				logger.WithField("tag", tag.Tag).WithField("replacementDigest", replacementTag.Descriptor.Digest.String()).WithField("err", err).Error("Could not fetch replacement manifest for retagging!")
+				continue
+			}
+
+			if _, err := manifestService.Put(ctx, replacementManifest, distribution.WithTag(tag.Tag)); err != nil {
 				logger.WithField("tag", tag.Tag).WithField("replacementDigest", replacementTag.Descriptor.Digest.String()).WithField("err", err).Error("Could not retag image to disposable digest!")
 				continue
 			}
