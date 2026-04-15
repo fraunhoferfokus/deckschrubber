@@ -157,12 +157,12 @@ func main() {
 		// The size of 'es' determines the number of repositories
 		// that are being queried by us
 		es := make([]string, windowSize)
-		n, err := r.Repositories(ctx, entries, last)
+		n, err := r.Repositories(ctx, es, last)
 		if err != nil && err != io.EOF {
 			log.Fatalf("Error while fetching repositories! (err: %v)", err)
 		}
 
-		log.WithFields(log.Fields{"count": n, "entries": entries[:n]}).Info("Successfully fetched repositories.")
+		log.WithFields(log.Fields{"count": n, "entries": es[:n]}).Info("Successfully fetched repositories.")
 		entries = append(entries, es[:n]...)
 
 		// Stop the query if:
